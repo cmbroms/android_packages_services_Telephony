@@ -50,10 +50,9 @@ public class CLIRListPreference extends ListPreference {
     }
 
     /*package*/ void init(TimeConsumingPreferenceListener listener, boolean skipReading,
-            int subscription) {
-        // Get the selected subscription
-        Log.d(LOG_TAG, "CLIRListPreference init, subscription :" + subscription);
-        mPhone = PhoneGlobals.getInstance().getPhone(subscription);
+             int phoneId) {
+        Log.d(LOG_TAG, "CLIRListPreference init, phoneId :" + phoneId);
+        mPhone = PhoneUtils.getPhoneFromPhoneId(phoneId);
 
         mTcpListener = listener;
         if (!skipReading) {

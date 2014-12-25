@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2013 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2014 The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
  * Copyright (C) 2006 The Android Open Source Project
@@ -19,20 +19,17 @@
 
 package com.android.phone;
 
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.preference.CheckBoxPreference;
+import android.preference.Preference;
 import android.preference.PreferenceActivity;
-import android.preference.PreferenceManager;
 import android.preference.PreferenceScreen;
 import android.util.Log;
 
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneConstants;
 
-import static com.android.internal.telephony.MSimConstants.SUBSCRIPTION_KEY;
-
-import com.android.phone.PhoneUtils.PhoneSettings;
+import static com.android.internal.telephony.PhoneConstants.SUBSCRIPTION_KEY;
 
 public class GsmUmtsCallOptions extends PreferenceActivity {
     private static final String LOG_TAG = "GsmUmtsCallOptions";
@@ -40,13 +37,9 @@ public class GsmUmtsCallOptions extends PreferenceActivity {
 
     private static final String BUTTON_CF_EXPAND_KEY = "button_cf_expand_key";
     private static final String BUTTON_MORE_EXPAND_KEY = "button_more_expand_key";
-    private static final String BUTTON_CB_EXPAND_KEY = "button_callbarring_expand_key";
-    private static final String BUTTON_SHOW_SSN_KEY = "button_show_ssn_key";
 
     private PreferenceScreen subscriptionPrefCFE;
-    private CheckBoxPreference mShowSSNPref;
 
-    private int mSubscription = 0;
     private Phone mPhone;
 
     @Override
@@ -56,30 +49,17 @@ public class GsmUmtsCallOptions extends PreferenceActivity {
         addPreferencesFromResource(R.xml.gsm_umts_call_options);
 
         // getting selected subscription
-        mSubscription = getIntent().getIntExtra(SUBSCRIPTION_KEY,
-                PhoneGlobals.getInstance().getDefaultSubscription());
+        mPhone = PhoneUtils.getPhoneFromIntent(getIntent());
+
         // setting selected subscription for GsmUmtsCallForwardOptions.java
         subscriptionPrefCFE  = (PreferenceScreen) findPreference(BUTTON_CF_EXPAND_KEY);
-        subscriptionPrefCFE.getIntent().putExtra(SUBSCRIPTION_KEY, mSubscription);
+        subscriptionPrefCFE.getIntent().putExtra(SUBSCRIPTION_KEY, mPhone.getSubId());
         // setting selected subscription for GsmUmtsAdditionalCallOptions.java
         PreferenceScreen subscriptionPrefAdditionSettings =
                 (PreferenceScreen) findPreference(BUTTON_MORE_EXPAND_KEY);
-        subscriptionPrefAdditionSettings.getIntent().putExtra(SUBSCRIPTION_KEY, mSubscription);
+        subscriptionPrefAdditionSettings.getIntent().putExtra(SUBSCRIPTION_KEY, mPhone.getSubId());
 
-        Log.d(LOG_TAG, "Getting GsmUmtsCallOptions subscription =" + mSubscription);
-
-        // setting selected subscription for CallBarring.java
-        PreferenceScreen subscriptionPrefCBSettings =
-                (PreferenceScreen) findPreference(BUTTON_CB_EXPAND_KEY);
-        subscriptionPrefCBSettings.getIntent().putExtra(SUBSCRIPTION_KEY, mSubscription);
-
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-        mShowSSNPref = (CheckBoxPreference) findPreference(BUTTON_SHOW_SSN_KEY);
-        boolean initialState = prefs.getBoolean(mShowSSNPref.getKey(), false);
-        PhoneSettings.setPreferenceKeyForSubscription(mShowSSNPref, mSubscription);
-        mShowSSNPref.setChecked(prefs.getBoolean(mShowSSNPref.getKey(), initialState));
-
-        mPhone = PhoneGlobals.getInstance().getPhone(mSubscription);
+        Log.d(LOG_TAG, "Getting GsmUmtsCallOptions subscription =" + mPhone.getSubId());
 
         if (mPhone.getPhoneType() != PhoneConstants.PHONE_TYPE_GSM) {
             Log.d(LOG_TAG, "Non GSM Phone!");

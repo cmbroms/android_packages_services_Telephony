@@ -1,7 +1,4 @@
 /*
- * Copyright (c) 2011-2013 The Linux Foundation. All rights reserved.
- * Not a Contribution.
- *
  * Copyright (C) 2009 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +25,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Resources;
+import android.graphics.BitmapFactory;
 import android.os.AsyncResult;
 import android.os.Binder;
 import android.os.CountDownTimer;
@@ -43,8 +41,6 @@ import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.PhoneFactory;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.TelephonyProperties;
-
-import static com.android.internal.telephony.MSimConstants.SUBSCRIPTION_KEY;
 
 /**
  * Application service that inserts/removes Emergency Callback Mode notification and
@@ -63,8 +59,6 @@ public class EmergencyCallbackModeService extends Service {
     private long mTimeLeft = 0;
     private Phone mPhone = null;
     private boolean mInEmergencyCall = false;
-    private boolean mIsImsPhone = false;
-    private int mSubscription = 0;
 
     private static final int ECM_TIMER_RESET = 1;
 
@@ -80,6 +74,15 @@ public class EmergencyCallbackModeService extends Service {
 
     @Override
     public void onCreate() {
+         Phone phoneInEcm = PhoneGlobals.getInstance().getPhoneInEcm();
+        // Check if it is CDMA phone
+        if (phoneInEcm == null || ((phoneInEcm.getPhoneType() != PhoneConstants.PHONE_TYPE_CDMA)
+                && (phoneInEcm.getImsPhone() == null))) {
+            Log.e(LOG_TAG, "Error! Emergency Callback Mode not supported for " + phoneInEcm);
+            stopSelf();
+            return;
+        }
+
         // Register receiver for intents
         IntentFilter filter = new IntentFilter();
         filter.addAction(TelephonyIntents.ACTION_EMERGENCY_CALLBACK_MODE_CHANGED);
@@ -87,38 +90,12 @@ public class EmergencyCallbackModeService extends Service {
         registerReceiver(mEcmReceiver, filter);
 
         mNotificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-    }
-
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-
-        PhoneGlobals app = PhoneGlobals.getInstance();
-
-        if (intent != null) {
-            mIsImsPhone = intent.getBooleanExtra(PhoneGlobals.EXTRA_IMS_PHONE, false);
-            mSubscription = intent.getIntExtra(SUBSCRIPTION_KEY, app.getDefaultSubscription());
-        } else {
-            Log.e(LOG_TAG, "onStartCommand: intent null");
-        }
-
-        if (mIsImsPhone) {
-            mPhone = PhoneUtils.getImsPhone(PhoneGlobals.getInstance().mCM);
-        } else {
-            mPhone = app.getPhone(mSubscription);
-        }
-
-        // Check if it is GSM phone, as GSM phone does not support ECBM
-        if (mPhone.getPhoneType() == PhoneConstants.PHONE_TYPE_GSM) {
-            Log.e(LOG_TAG, "Error! Emergency Callback Mode not supported for " +
-                    PhoneFactory.getDefaultPhone().getPhoneName() + " phones");
-            stopSelf();
-        }
 
         // Register ECM timer reset notfication
+        mPhone = phoneInEcm;
         mPhone.registerForEcmTimerReset(mHandler, ECM_TIMER_RESET, null);
 
         startTimerNotification();
-        return START_STICKY;
     }
 
     @Override
@@ -126,15 +103,11 @@ public class EmergencyCallbackModeService extends Service {
         // Unregister receiver
         unregisterReceiver(mEcmReceiver);
         // Unregister ECM timer reset notification
-        if (mPhone != null) {
-            mPhone.unregisterForEcmTimerReset(mHandler);
-        }
+        mPhone.unregisterForEcmTimerReset(mHandler);
 
         // Cancel the notification and timer
         mNotificationManager.cancel(R.string.phone_in_ecm_notification_title);
-        if (mTimer != null) {
-            mTimer.cancel();
-        }
+        mTimer.cancel();
     }
 
     /**
@@ -172,38 +145,53 @@ public class EmergencyCallbackModeService extends Service {
         showNotification(ecmTimeout);
 
         // Start countdown timer for the notification updates
-        mTimer = new CountDownTimer(ecmTimeout, 1000) {
+        if (mTimer != null) {
+            mTimer.cancel();
+        } else {
+            mTimer = new CountDownTimer(ecmTimeout, 1000) {
 
-            @Override
-            public void onTick(long millisUntilFinished) {
-                mTimeLeft = millisUntilFinished;
-                EmergencyCallbackModeService.this.showNotification(millisUntilFinished);
-            }
+                @Override
+                public void onTick(long millisUntilFinished) {
+                    mTimeLeft = millisUntilFinished;
+                    EmergencyCallbackModeService.this.showNotification(millisUntilFinished);
+                }
 
-            @Override
-            public void onFinish() {
-                //Do nothing
-            }
+                @Override
+                public void onFinish() {
+                    //Do nothing
+                }
 
-        }.start();
+            };
+        }
+        mTimer.start();
     }
 
     /**
      * Shows notification for Emergency Callback Mode
      */
     private void showNotification(long millisUntilFinished) {
+        final boolean isInEcm = Boolean.parseBoolean(
+                SystemProperties.get(TelephonyProperties.PROPERTY_INECM_MODE));
+        if (!isInEcm) {
+            Log.i(LOG_TAG, "Asked to show notification but not in ECM mode");
+            if (mTimer != null) {
+                mTimer.cancel();
+            }
+            return;
+        }
+        final Notification.Builder builder = new Notification.Builder(getApplicationContext());
+        builder.setOngoing(true);
+        builder.setPriority(Notification.PRIORITY_HIGH);
+        builder.setSmallIcon(R.drawable.ic_emergency_callback_mode);
+        builder.setTicker(getText(R.string.phone_entered_ecm_text));
+        builder.setContentTitle(getText(R.string.phone_in_ecm_notification_title));
+        builder.setColor(getResources().getColor(R.color.dialer_theme_color));
 
-        // Set the icon and text
-        Notification notification = new Notification(
-                R.drawable.picture_emergency25x25,
-                getText(R.string.phone_entered_ecm_text), 0);
-
-        Intent intent = new Intent(EmergencyCallbackModeExitDialog.ACTION_SHOW_ECM_EXIT_DIALOG);
-        intent.putExtra(PhoneGlobals.EXTRA_IMS_PHONE, mIsImsPhone);
-        intent.putExtra(SUBSCRIPTION_KEY, mSubscription);
         // PendingIntent to launch Emergency Callback Mode Exit activity if the user selects
         // this notification
-        PendingIntent contentIntent = PendingIntent.getActivity(this, 0, intent, 0);
+        PendingIntent contentIntent = PendingIntent.getActivity(this, 0,
+                new Intent(EmergencyCallbackModeExitDialog.ACTION_SHOW_ECM_EXIT_DIALOG), 0);
+        builder.setContentIntent(contentIntent);
 
         // Format notification string
         String text = null;
@@ -215,14 +203,10 @@ public class EmergencyCallbackModeService extends Service {
             text = String.format(getResources().getQuantityText(
                      R.plurals.phone_in_ecm_notification_time, minutes).toString(), time);
         }
-        // Set the info in the notification
-        notification.setLatestEventInfo(this, getText(R.string.phone_in_ecm_notification_title),
-                text, contentIntent);
-
-        notification.flags = Notification.FLAG_ONGOING_EVENT;
+        builder.setContentText(text);
 
         // Show notification
-        mNotificationManager.notify(R.string.phone_in_ecm_notification_title, notification);
+        mNotificationManager.notify(R.string.phone_in_ecm_notification_title, builder.build());
     }
 
     /**
@@ -270,12 +254,5 @@ public class EmergencyCallbackModeService extends Service {
      */
     public boolean getEmergencyCallbackModeCallState() {
         return mInEmergencyCall;
-    }
-
-    /**
-     * Returns true if ECBM is on IMS phone
-     */
-    public boolean isEcbmOnIms() {
-        return mIsImsPhone;
     }
 }

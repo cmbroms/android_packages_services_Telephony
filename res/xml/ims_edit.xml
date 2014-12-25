@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Copyright (c) 2012, The Linux Foundation. All rights reserved.
+<!-- Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
      Not a Contribution.
 
      Copyright (C) 2010 The Android Open Source Project
@@ -21,24 +21,6 @@
         android:title="@string/ims_edit_title"
         android:persistent="false">
 
-    <MultiSelectListPreference
-        android:key="@string/ims_call_type_control"
-        android:title="@string/ims_service_capability_title"
-        android:entries="@array/ims_call_cap_types"
-        android:entryValues="@array/ims_call_cap_types"
-        android:summary="@string/ims_service_capability"
-        android:persistent="false"
-        android:dialogTitle="@string/ims_service_capability"/>
-
-    <ListPreference
-        android:key="@string/call_type"
-        android:title="@string/mo_call_type_title"
-        android:entries="@array/ims_call_types"
-        android:entryValues="@array/ims_call_types"
-        android:summary="@string/default_call_type"
-        android:persistent="false"
-        android:dialogTitle="@string/mo_call_type_title"/>
-
     <ListPreference
         android:key="@string/ims_vt_call_quality"
         android:title="@string/ims_vt_call_quality_title"
@@ -46,6 +28,7 @@
         android:entryValues="@array/ims_vt_call_quality_values"
         android:summary="@string/ims_vt_call_quality_unknown"
         android:persistent="false"
+        android:enabled="true"
         android:dialogTitle="@string/ims_vt_call_quality_title"/>
 
 </PreferenceScreen>

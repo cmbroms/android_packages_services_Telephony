@@ -48,6 +48,7 @@ import android.preference.ListPreference;
 import android.preference.Preference;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceScreen;
+import android.provider.Settings;
 import android.os.Bundle;
 
 import com.android.internal.telephony.TelephonyIntents;
@@ -139,9 +140,8 @@ public class UPLMNEditor extends PreferenceActivity implements
     protected void onResume() {
         super.onResume();
         displayNetworkInfo(getIntent());
-        mAirplaneModeOn = android.provider.Settings.System.getInt(
-                getContentResolver(),
-                android.provider.Settings.System.AIRPLANE_MODE_ON, -1) == 1;
+        mAirplaneModeOn =
+            Settings.System.getInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) == 1;
         setScreenEnabled();
     }
 
@@ -185,6 +185,8 @@ public class UPLMNEditor extends PreferenceActivity implements
                 || mNoSet.equals(mPRIpref.getSummary());
         if (menu != null) {
             menu.setGroupEnabled(0, !mAirplaneModeOn);
+            //only show the save and delete option menu when radio on
+            //and edit text is not empty.
             if (getIntent().getBooleanExtra(UPLMN_ADD, true)) {
                 menu.getItem(0).setEnabled((!mAirplaneModeOn) && !isEmpty);
             } else {
@@ -222,30 +224,32 @@ public class UPLMNEditor extends PreferenceActivity implements
     }
 
     private void genNWInfoToIntent(Intent intent) {
-        intent.putExtra(UPLMNEditor.UPLMN_CODE, mNWIDPref.getSummary());
         int priority = 0;
-        int size = getIntent().getIntExtra(UPLMN_SIZE, 0);
+        int plmnListSize = getIntent().getIntExtra(UPLMN_SIZE, 0);
         try {
             priority = Integer.parseInt(String.valueOf(mPRIpref.getSummary()));
         } catch (NumberFormatException e) {
             Log.d(LOG_TAG, "parse value of basband error");
         }
         if (getIntent().getBooleanExtra(UPLMN_ADD, false)) {
-            if (priority > size) {
-                priority = size;
+            if (priority > plmnListSize) {
+                priority = plmnListSize;
             }
         } else {
-            if (priority >= size) {
-                priority = size - 1;
+            if (priority >= plmnListSize) {
+                priority = plmnListSize - 1;
             }
         }
         intent.putExtra(UPLMNEditor.UPLMN_PRIORITY, priority);
+
         try {
             intent.putExtra(UPLMNEditor.UPLMN_SERVICE, convertApMode2EF(Integer
                     .parseInt(String.valueOf(mNWMPref.getValue()))));
         } catch (NumberFormatException e) {
             intent.putExtra(UPLMNEditor.UPLMN_SERVICE, convertApMode2EF(0));
         }
+
+        intent.putExtra(UPLMNEditor.UPLMN_CODE, mNWIDPref.getSummary());
     }
 
     private void setRemovedNWInfo() {
@@ -316,7 +320,8 @@ public class UPLMNEditor extends PreferenceActivity implements
     public void buttonEnabled() {
         int len = mNWIDText.getText().toString().length();
         boolean state = true;
-        if (len < 5 || len > 6) {
+        int plmnLen = 6;
+        if (len != plmnLen) {
             state = false;
         }
         if (mNWIDDialog != null) {

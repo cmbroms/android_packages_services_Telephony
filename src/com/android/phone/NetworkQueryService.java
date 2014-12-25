@@ -32,8 +32,6 @@ import android.util.Log;
 
 import java.util.ArrayList;
 
-import static com.android.internal.telephony.MSimConstants.SUBSCRIPTION_KEY;
-
 /**
  * Service code used to assist in querying the network for service
  * availability.   
@@ -171,10 +169,9 @@ public class NetworkQueryService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        int subscription = intent.getIntExtra(SUBSCRIPTION_KEY,
-                        PhoneGlobals.getInstance().getDefaultSubscription());
-        log("onStart subscription :" + subscription);
-        mPhone = MSimPhoneGlobals.getInstance().getPhone(subscription);
+        mPhone = PhoneUtils.getPhoneFromIntent(intent);
+
+        log("onStart phoneId :" + mPhone.getPhoneId());
         return START_REDELIVER_INTENT;
     }
     

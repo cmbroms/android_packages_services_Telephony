@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014 The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -39,7 +39,8 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.provider.ContactsContract;
-import android.telephony.MSimTelephonyManager;
+import android.telephony.SubscriptionManager;
+import android.telephony.TelephonyManager;
 import android.telephony.PhoneNumberUtils;
 import android.util.Log;
 import android.view.Window;
@@ -206,19 +207,20 @@ public class ExportContactsToSim extends Activity {
     private Uri getUri() {
         Intent intent = getIntent();
         Bundle extras = intent.getExtras();
-        if (MSimTelephonyManager.getDefault().isMultiSimEnabled()) {
-            int subscription  = extras.getInt(SIM_INDEX);
-            String[] adnString = {"adn", "adn_sub2", "adn_sub3"};
-            Log.d("ExportContactsToSim"," subscription : " + subscription);
+        int slotId  = extras.getInt(SIM_INDEX);
+        Log.d("ExportContactsToSim"," on slot: " + slotId);
 
-            if (subscription < MSimTelephonyManager.getDefault().getPhoneCount()) {
-                return Uri.parse("content://iccmsim/" + adnString[subscription]);
+        if (slotId < TelephonyManager.getDefault().getPhoneCount() && slotId >= 0) {
+            long[] subId = SubscriptionManager.getSubId(slotId);
+            if (subId != null) {
+                return Uri.parse("content://icc/adn/subId/" + subId[0]);
             } else {
-                Log.e(TAG, "Invalid subcription:" + subscription);
+                Log.e(TAG, "Invalid subId for slot:" + slotId);
                 return null;
             }
         } else {
-            return Uri.parse("content://icc/adn");
+            Log.e(TAG, "Invalid slot:" + slotId);
+            return null;
         }
     }
 }

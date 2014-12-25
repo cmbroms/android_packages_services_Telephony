@@ -16,26 +16,20 @@
 
 package com.android.phone;
 
-import android.telephony.MSimTelephonyManager;
-import android.telephony.TelephonyManager;
-import com.android.internal.telephony.CallStateException;
-import com.android.internal.telephony.Call;
 import com.android.internal.telephony.CallerInfo;
 import com.android.internal.telephony.Connection;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.TelephonyCapabilities;
-import com.android.internal.telephony.cdma.CdmaConnection;
 import com.android.phone.common.CallLogAsync;
 
 import android.net.Uri;
 import android.os.SystemProperties;
 import android.provider.CallLog.Calls;
+import android.telephony.DisconnectCause;
 import android.telephony.PhoneNumberUtils;
 import android.text.TextUtils;
 import android.util.Log;
-
-import static com.android.internal.telephony.MSimConstants.INVALID_SUBSCRIPTION;
 
 /**
  * Helper class for interacting with the call log.
@@ -61,19 +55,10 @@ class CallLogger {
      * @param callLogType The type of call log entry.
      */
     public void logCall(Connection c, int callLogType) {
-
-        //call log type for ims
-        final int INCOMING_IMS_TYPE = 21;
-        final int OUTGOING_IMS_TYPE = 22;
-        final int MISSED_IMS_TYPE = 23;
-
         final String number = c.getAddress();
         final long date = c.getCreateTime();
         final long duration = c.getDurationMillis();
         final Phone phone = c.getCall().getPhone();
-        if (DBG) {
-            log("- logCall(Connection c, int callLogType), phone = " + phone);
-        }
 
         final CallerInfo ci = getCallerInfoFromConnection(c);  // May be null.
         final String logNumber = getLogNumber(c, ci);
@@ -93,46 +78,9 @@ class CallLogger {
         final boolean isOtaspNumber = TelephonyCapabilities.supportsOtasp(phone)
                 && phone.isOtaSpNumber(number);
 
-        int durationType = Calls.DURATION_TYPE_ACTIVE;
-        if (Calls.OUTGOING_TYPE == callLogType && c instanceof CdmaConnection
-                && !((CdmaConnection) c).isConnectionTimerReset()) {
-            durationType = Calls.DURATION_TYPE_CALLOUT;
-        }
-
         // Don't log OTASP calls.
         if (!isOtaspNumber) {
-            //get the current phone type: csvoice, ims
-            if (DBG) {
-                log("CallLogger: logCall: callLogType in =" + callLogType);
-                log("CallLogger: logCall: phoneType =" + phone.getPhoneType());
-            }
-            if (SystemProperties.getBoolean("net.lte.VT_LOOPBACK_ENABLE", false) ||
-                phone.getPhoneType() == PhoneConstants.PHONE_TYPE_IMS){
-                switch(callLogType){
-                    case Calls.INCOMING_TYPE:
-                        callLogType = INCOMING_IMS_TYPE;
-                        break;
-                    case Calls.OUTGOING_TYPE:
-                        callLogType = OUTGOING_IMS_TYPE;
-                        break;
-                    case Calls.MISSED_TYPE:
-                        callLogType = MISSED_IMS_TYPE;
-                        break;
-                }
-            }
-            if (DBG) {
-                log("CallLogger: logCall: callLogType out =" + callLogType);
-            }
-            // If calling sub is absent, use invalid card index to hide the
-            // card index indicator in calllog.
-            if (MSimTelephonyManager.getDefault().getSimState(c.getCall()
-                    .getPhone().getSubscription()) == TelephonyManager.SIM_STATE_ABSENT) {
-                logCall(ci, logNumber, presentation, callLogType, date, duration,
-                        INVALID_SUBSCRIPTION, durationType);
-            } else {
-                logCall(ci, logNumber, presentation, callLogType, date, duration, c.getCall()
-                        .getPhone().getSubscription(), durationType);
-            }
+            logCall(ci, logNumber, presentation, callLogType, date, duration);
         }
     }
 
@@ -140,13 +88,13 @@ class CallLogger {
      * Came as logCall(Connection,int) but calculates the call type from the connection object.
      */
     public void logCall(Connection c) {
-        final Connection.DisconnectCause cause = c.getDisconnectCause();
+        final int cause = c.getDisconnectCause();
 
         // Set the "type" to be displayed in the call log (see constants in CallLog.Calls)
         final int callLogType;
 
         if (c.isIncoming()) {
-            callLogType = (cause == Connection.DisconnectCause.INCOMING_MISSED ?
+            callLogType = (cause == DisconnectCause.INCOMING_MISSED ?
                            Calls.MISSED_TYPE : Calls.INCOMING_TYPE);
         } else {
             callLogType = Calls.OUTGOING_TYPE;
@@ -160,31 +108,8 @@ class CallLogger {
      * Logs a call to the call from the parameters passed in.
      */
     public void logCall(CallerInfo ci, String number, int presentation, int callType, long start,
-                        long duration, int subscription, int durationType) {
-        final boolean isEmergencyNumber = PhoneNumberUtils.isLocalEmergencyNumber(number,
-                mApplication);
-
-        // On some devices, to avoid accidental redialing of
-        // emergency numbers, we *never* log emergency calls to
-        // the Call Log.  (This behavior is set on a per-product
-        // basis, based on carrier requirements.)
-        final boolean okToLogEmergencyNumber =
-            mApplication.getResources().getBoolean(
-                        R.bool.allow_emergency_numbers_in_call_log);
-
-        // Don't log emergency numbers if the device doesn't allow it,
-        boolean isOkToLogThisCall = !isEmergencyNumber || okToLogEmergencyNumber;
-
-        if (isOkToLogThisCall) {
-            if (DBG) {
-                log("sending Calllog entry: " + ci + ", " + PhoneUtils.toLogSafePhoneNumber(number)
-                    + "," + presentation + ", " + callType + ", " + start + ", " + duration);
-            }
-
-            CallLogAsync.AddCallArgs args = new CallLogAsync.AddCallArgs(mApplication, ci, number,
-                    presentation, callType, start, duration, subscription, durationType);
-            mCallLog.addCall(args);
-        }
+                        long duration) {
+        // no-op
     }
 
     /**

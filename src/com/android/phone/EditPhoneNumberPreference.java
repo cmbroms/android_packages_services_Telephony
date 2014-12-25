@@ -22,6 +22,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.TypedArray;
+import android.preference.EditTextPreference;
 import android.provider.ContactsContract.CommonDataKinds.Phone;
 import android.telephony.PhoneNumberUtils;
 import android.text.TextUtils;
@@ -34,7 +35,7 @@ import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.TextView;
 
-public class EditPhoneNumberPreference extends EmptyWatchingEditTextPreference {
+public class EditPhoneNumberPreference extends EditTextPreference {
 
     //allowed modes for this preference.
     /** simple confirmation (OK / CANCEL) */
@@ -93,7 +94,7 @@ public class EditPhoneNumberPreference extends EmptyWatchingEditTextPreference {
      * DialogPreference.onDialogClosed(), except we also pass in a buttonClicked
      * value indicating which of the three possible buttons were pressed.
      */
-    interface OnDialogClosedListener {
+    public interface OnDialogClosedListener {
         void onDialogClosed(EditPhoneNumberPreference preference, int buttonClicked);
     }
 
@@ -101,7 +102,7 @@ public class EditPhoneNumberPreference extends EmptyWatchingEditTextPreference {
      * Interface for the default number setting listener.  Handles requests for
      * the default display number for the dialog.
      */
-    interface GetDefaultNumberListener {
+    public interface GetDefaultNumberListener {
         /**
          * Notify that we are looking for a default display value.
          * @return null if there is no contribution from this interface,

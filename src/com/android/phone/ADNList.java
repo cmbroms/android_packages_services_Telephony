@@ -1,7 +1,4 @@
 /*
- * Copyright (c) 2011-2013 The Linux Foundation. All rights reserved.
- * Not a Contribution.
- *
  * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,17 +30,20 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
-import android.telephony.MSimTelephonyManager;
 import android.util.Log;
 import android.view.Window;
 import android.widget.CursorAdapter;
 import android.widget.SimpleCursorAdapter;
 import android.widget.TextView;
 
-import com.android.internal.telephony.PhoneFactory;
-
 /**
- * ADN List activity for the Phone app.
+ * Abbreviated Dial Numbers (ADN) list activity for the Phone app. By default, this class will show
+ * you all Service Dialing Numbers (SDN) that are supported by a service provider.  SDNs are a form
+ * of speed dial for accessing service provider contacts like "#MIN" for getting user minutes.
+ * To see this class in use, trigger the radio info screen by dialing *#*#INFO#*#* and open the
+ * menu.
+ * This class can also be used as a base class for simple contact lists that can be represented with
+ * only labels and numbers.
  */
 public class ADNList extends ListActivity {
     protected static final String TAG = "ADNList";
@@ -76,7 +76,7 @@ public class ADNList extends ListActivity {
     protected CursorAdapter mCursorAdapter;
     protected Cursor mCursor = null;
 
-    private TextView mEmptyText;
+    protected TextView mEmptyText;
 
     protected int mInitialSelection = -1;
 
@@ -174,14 +174,14 @@ public class ADNList extends ListActivity {
         if (DBG) log("displayProgress: " + loading);
 
         mEmptyText.setText(loading ? R.string.simContacts_emptyLoading:
-            ((isAirplaneModeOn(this) && !isSimPresent()) ? R.string.simContacts_airplaneMode :
+            (isAirplaneModeOn(this) ? R.string.simContacts_airplaneMode :
                 R.string.simContacts_empty));
         getWindow().setFeatureInt(
                 Window.FEATURE_INDETERMINATE_PROGRESS,
                 loading ? PROGRESS_VISIBILITY_ON : PROGRESS_VISIBILITY_OFF);
     }
 
-    private static boolean isAirplaneModeOn(Context context) {
+    protected static boolean isAirplaneModeOn(Context context) {
         return Settings.System.getInt(context.getContentResolver(),
                 Settings.System.AIRPLANE_MODE_ON, 0) != 0;
     }
@@ -249,10 +249,6 @@ public class ADNList extends ListActivity {
             }
         });
         alertDialog.show();
-    }
-
-    protected boolean isSimPresent() {
-        return PhoneFactory.getDefaultPhone().getIccCard().hasIccCard();
     }
 
     protected void log(String msg) {

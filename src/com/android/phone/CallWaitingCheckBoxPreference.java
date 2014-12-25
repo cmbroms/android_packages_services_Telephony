@@ -38,11 +38,9 @@ public class CallWaitingCheckBoxPreference extends CheckBoxPreference {
     }
 
     /*package*/ void init(TimeConsumingPreferenceListener listener,
-            boolean skipReading, int subscription) {
-        // Get the selected subscription
-        if (DBG)
-            Log.d(LOG_TAG, "CallWaitingCheckBoxPreference init, subscription :" + subscription);
-        mPhone = PhoneGlobals.getInstance().getPhone(subscription);
+            boolean skipReading, int phoneId) {
+        if (DBG) Log.d(LOG_TAG, "CallWaitingCheckBoxPreference init, phoneId :" + phoneId);
+        mPhone = PhoneUtils.getPhoneFromPhoneId(phoneId);
 
         mTcpListener = listener;
 

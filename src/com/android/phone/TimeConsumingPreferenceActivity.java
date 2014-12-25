@@ -114,13 +114,10 @@ public class TimeConsumingPreferenceActivity extends PreferenceActivity
                     builder.setPositiveButton(R.string.close_dialog, mDismiss);
                     break;
                 case EXCEPTION_ERROR:
-                    msgId = R.string.exception_error;
-                    builder.setPositiveButton(R.string.close_dialog, mDismiss);
-                    break;
                 default:
                     msgId = R.string.exception_error;
                     // The error is not recoverable on dialog exit.
-                    builder.setPositiveButton(R.string.close_dialog, mDismissAndFinish);
+                    builder.setPositiveButton(R.string.close_dialog, mDismiss);
                     break;
             }
 
@@ -191,6 +188,7 @@ public class TimeConsumingPreferenceActivity extends PreferenceActivity
         if (mIsForeground) {
             showDialog(error);
         }
+        preference.setEnabled(false);
     }
 
     @Override

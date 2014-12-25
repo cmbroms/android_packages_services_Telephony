@@ -46,16 +46,16 @@ import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.telephony.SubscriptionManager;
 
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.TelephonyIntents;
 
 public class NetworkSettingDataManager {
-    private static final String LOG_TAG = "phone";
+    private static final String LOG_TAG = "phone ";
     private static final boolean DBG = true;
     Context mContext;
-    private ConnectivityManager mCm;
     private TelephonyManager mTelephonyManager;
     private boolean mNetworkSearchDataDisconnecting = false;
     private boolean mNetworkSearchDataDisabled = false;
@@ -63,8 +63,7 @@ public class NetworkSettingDataManager {
 
     public NetworkSettingDataManager(Context context) {
         mContext  = context;
-        if (DBG) log("Create NetworkSettingDataManager");
-        mCm = (ConnectivityManager)mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (DBG) log(" Create NetworkSettingDataManager");
         mTelephonyManager = (TelephonyManager)mContext.getSystemService(Context.TELEPHONY_SERVICE);
     }
 
@@ -78,7 +77,7 @@ public class NetworkSettingDataManager {
             if (mNetworkSearchDataDisconnecting) {
                 if (action.equals(TelephonyIntents.ACTION_ANY_DATA_CONNECTION_STATE_CHANGED)) {
                     if (mTelephonyManager.getDataState() == TelephonyManager.DATA_DISCONNECTED) {
-                        log("network disconnect data done");
+                        log(" network disconnect data done");
                         mNetworkSearchDataDisabled = true;
                         mNetworkSearchDataDisconnecting = false;
                         mMsg.arg1 = 1;
@@ -93,7 +92,7 @@ public class NetworkSettingDataManager {
     public void updateDataState(boolean enable, Message msg) {
         if (!enable) {
             if (mTelephonyManager.getDataState() == TelephonyManager.DATA_CONNECTED) {
-                log("Data is in CONNECTED state");
+                log(" Data is in CONNECTED state");
                 mMsg = msg;
                 ConfirmDialogListener listener = new ConfirmDialogListener(msg);
                 AlertDialog d = new AlertDialog.Builder(mContext)
@@ -113,9 +112,9 @@ public class NetworkSettingDataManager {
             }
         } else {
             if (mNetworkSearchDataDisabled || mNetworkSearchDataDisconnecting) {
-                log("Enabling data");
                 //enable data service
-                mCm.setMobileDataEnabled(true);
+                mTelephonyManager.setDataEnabledUsingSubId( SubscriptionManager
+                        .getDefaultSubId(), true);
                 mContext.unregisterReceiver(mReceiver);
                 mNetworkSearchDataDisabled = false;
                 mNetworkSearchDataDisconnecting = false;
@@ -140,9 +139,10 @@ public class NetworkSettingDataManager {
                         TelephonyIntents.ACTION_ANY_DATA_CONNECTION_STATE_CHANGED);
                 mContext.registerReceiver(mReceiver, intentFilter);
                 mNetworkSearchDataDisconnecting = true;
-                mCm.setMobileDataEnabled(false);
+                mTelephonyManager.setDataEnabledUsingSubId(SubscriptionManager
+                        .getDefaultSubId(), false);
             } else if (which == DialogInterface.BUTTON_NEGATIVE){
-                log("network search, do nothing");
+                log(" network search, do nothing");
                 msg1.arg1 = 0;
                 msg1.sendToTarget();
             }

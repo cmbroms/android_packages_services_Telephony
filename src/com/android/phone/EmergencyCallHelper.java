@@ -16,7 +16,6 @@
 
 package com.android.phone;
 
-import com.android.internal.telephony.Call;
 import com.android.internal.telephony.CallManager;
 import com.android.internal.telephony.Connection;
 import com.android.internal.telephony.Phone;
@@ -30,6 +29,7 @@ import android.os.Message;
 import android.os.PowerManager;
 import android.os.UserHandle;
 import android.provider.Settings;
+import android.telephony.DisconnectCause;
 import android.telephony.ServiceState;
 import android.util.Log;
 
@@ -201,7 +201,8 @@ public class EmergencyCallHelper extends Handler {
 
         // Once we reach either STATE_IN_SERVICE or STATE_EMERGENCY_ONLY,
         // it's finally OK to place the emergency call.
-        boolean okToCall = (state.getState() != ServiceState.STATE_POWER_OFF);
+        boolean okToCall = (state.getState() == ServiceState.STATE_IN_SERVICE)
+                || (state.getState() == ServiceState.STATE_EMERGENCY_ONLY);
 
         if (okToCall) {
             // Woo hoo!  It's OK to actually place the call.
@@ -234,11 +235,12 @@ public class EmergencyCallHelper extends Handler {
      */
     private void onDisconnect(Message msg) {
         Connection conn = (Connection) ((AsyncResult) msg.obj).result;
-        Connection.DisconnectCause cause = conn.getDisconnectCause();
+        int cause = conn.getDisconnectCause();
         if (DBG) log("onDisconnect: connection '" + conn
-                     + "', addr '" + conn.getAddress() + "', cause = " + cause);
+                     + "', addr '" + conn.getAddress()
+                     + "', cause = " + DisconnectCause.toString(cause));
 
-        if (cause == Connection.DisconnectCause.OUT_OF_SERVICE) {
+        if (cause == DisconnectCause.OUT_OF_SERVICE) {
             // Wait a bit more and try again (or just bail out totally if
             // we've had too many failures.)
             if (DBG) log("- onDisconnect: OUT_OF_SERVICE, need to retry...");
@@ -265,7 +267,6 @@ public class EmergencyCallHelper extends Handler {
     private void onRetryTimeout() {
         PhoneConstants.State phoneState = mCM.getState();
         int serviceState = mCM.getDefaultPhone().getServiceState().getState();
-        Call.State callState = mCM.getActiveFgCallState();
         if (DBG) log("onRetryTimeout():  phone state " + phoneState
                      + ", service state " + serviceState
                      + ", mNumRetriesSoFar = " + mNumRetriesSoFar);
@@ -279,10 +280,8 @@ public class EmergencyCallHelper extends Handler {
         // - If the radio is still powered off, try powering it on again.
 
         if (phoneState == PhoneConstants.State.OFFHOOK) {
-            if (callState != Call.State.DIALING) {
-                if (DBG) log("- onRetryTimeout: Call is active!  Cleaning up...");
-                cleanup();
-            }
+            if (DBG) log("- onRetryTimeout: Call is active!  Cleaning up...");
+            cleanup();
             return;
         }
 
@@ -365,12 +364,10 @@ public class EmergencyCallHelper extends Handler {
         // airplane mode" sequence from the beginning again!)
 
         registerForDisconnect();  // Get notified when this call disconnects
-        int sub = mApp.getVoiceSubscriptionInService();
-        Phone phone = mApp.getPhone(sub);
 
         if (DBG) log("- placing call to '" + mNumber + "'...");
         int callStatus = PhoneUtils.placeCall(mApp,
-                                              phone,
+                                              mCM.getDefaultPhone(),
                                               mNumber,
                                               null,  // contactUri
                                               true); // isEmergencyCall

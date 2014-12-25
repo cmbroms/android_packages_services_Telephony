@@ -48,7 +48,6 @@ class CallStateMonitor extends Handler {
     public static final int PHONE_NEW_RINGING_CONNECTION = 2;
     public static final int PHONE_DISCONNECT = 3;
     public static final int PHONE_UNKNOWN_CONNECTION_APPEARED = 4;
-    public static final int PHONE_INCOMING_RING = 5;
     public static final int PHONE_STATE_DISPLAYINFO = 6;
     public static final int PHONE_STATE_SIGNALINFO = 7;
     public static final int PHONE_CDMA_CALL_WAITING = 8;
@@ -58,14 +57,11 @@ class CallStateMonitor extends Handler {
     public static final int PHONE_RESEND_MUTE = 12;
     public static final int PHONE_ON_DIAL_CHARS = 13;
     public static final int PHONE_SUPP_SERVICE_NOTIFY = 14;
-    public static final int PHONE_ACTIVE_SUBSCRIPTION_CHANGE = 15;
-    public static final int PHONE_CALL_MODIFY = 16;
-    public static final int PHONE_SUPP_SERVICE_FAILED = 17;
 
     // Other events from call manager
     public static final int EVENT_OTA_PROVISION_CHANGE = 20;
 
-    protected CallManager callManager;
+    private CallManager callManager;
     private ArrayList<Handler> registeredHandlers;
 
     // Events generated internally:
@@ -79,24 +75,25 @@ class CallStateMonitor extends Handler {
     /**
      * Register for call state notifications with the CallManager.
      */
-    protected void registerForNotifications() {
-        callManager.registerForNewRingingConnection(this, PHONE_NEW_RINGING_CONNECTION, null);
-        callManager.registerForPreciseCallStateChanged(this, PHONE_STATE_CHANGED, null);
-        callManager.registerForDisconnect(this, PHONE_DISCONNECT, null);
-        callManager.registerForUnknownConnection(this, PHONE_UNKNOWN_CONNECTION_APPEARED, null);
-        callManager.registerForIncomingRing(this, PHONE_INCOMING_RING, null);
+    private void registerForNotifications() {
+        //
+        // TODO: The lines commented out here can be removed as their associated functionality in
+        // other files is removed.
+        //
+        //callManager.registerForNewRingingConnection(this, PHONE_NEW_RINGING_CONNECTION, null);
+        //callManager.registerForPreciseCallStateChanged(this, PHONE_STATE_CHANGED, null);
+        //callManager.registerForDisconnect(this, PHONE_DISCONNECT, null);
+        //callManager.registerForUnknownConnection(this, PHONE_UNKNOWN_CONNECTION_APPEARED, null);
         callManager.registerForCdmaOtaStatusChange(this, EVENT_OTA_PROVISION_CHANGE, null);
-        callManager.registerForCallWaiting(this, PHONE_CDMA_CALL_WAITING, null);
+        //callManager.registerForCallWaiting(this, PHONE_CDMA_CALL_WAITING, null);
         callManager.registerForDisplayInfo(this, PHONE_STATE_DISPLAYINFO, null);
         callManager.registerForSignalInfo(this, PHONE_STATE_SIGNALINFO, null);
         callManager.registerForInCallVoicePrivacyOn(this, PHONE_ENHANCED_VP_ON, null);
         callManager.registerForInCallVoicePrivacyOff(this, PHONE_ENHANCED_VP_OFF, null);
-        callManager.registerForRingbackTone(this, PHONE_RINGBACK_TONE, null);
-        callManager.registerForResendIncallMute(this, PHONE_RESEND_MUTE, null);
-        callManager.registerForPostDialCharacter(this, PHONE_ON_DIAL_CHARS, null);
+        //callManager.registerForRingbackTone(this, PHONE_RINGBACK_TONE, null);
+        //callManager.registerForResendIncallMute(this, PHONE_RESEND_MUTE, null);
+        //callManager.registerForPostDialCharacter(this, PHONE_ON_DIAL_CHARS, null);
         callManager.registerForSuppServiceNotification(this, PHONE_SUPP_SERVICE_NOTIFY, null);
-        callManager.registerForCallModify(this, PHONE_CALL_MODIFY, null);
-        callManager.registerForSuppServiceFailed(this, PHONE_SUPP_SERVICE_FAILED, null);
     }
 
     public void addListener(Handler handler) {
@@ -104,6 +101,7 @@ class CallStateMonitor extends Handler {
             if (DBG) {
                 Log.d(LOG_TAG, "Adding Handler: " + handler);
             }
+
             registeredHandlers.add(handler);
         }
     }
@@ -127,22 +125,20 @@ class CallStateMonitor extends Handler {
         if (DBG) Log.d(LOG_TAG, "updateCallNotifierRegistrationsAfterRadioTechnologyChange...");
 
         // Unregister all events from the old obsolete phone
-        callManager.unregisterForNewRingingConnection(this);
-        callManager.unregisterForPreciseCallStateChanged(this);
-        callManager.unregisterForDisconnect(this);
-        callManager.unregisterForUnknownConnection(this);
-        callManager.unregisterForIncomingRing(this);
-        callManager.unregisterForCallWaiting(this);
+        //callManager.unregisterForNewRingingConnection(this);
+        //callManager.unregisterForPreciseCallStateChanged(this);
+        //callManager.unregisterForDisconnect(this);
+        //callManager.unregisterForUnknownConnection(this);
+        //callManager.unregisterForCallWaiting(this);
         callManager.unregisterForDisplayInfo(this);
         callManager.unregisterForSignalInfo(this);
         callManager.unregisterForCdmaOtaStatusChange(this);
-        callManager.unregisterForRingbackTone(this);
-        callManager.unregisterForResendIncallMute(this);
+        //callManager.unregisterForRingbackTone(this);
+        //callManager.unregisterForResendIncallMute(this);
         callManager.unregisterForInCallVoicePrivacyOn(this);
         callManager.unregisterForInCallVoicePrivacyOff(this);
-        callManager.unregisterForPostDialCharacter(this);
+        //callManager.unregisterForPostDialCharacter(this);
         callManager.unregisterForSuppServiceNotification(this);
-        callManager.unregisterForCallModify(this);
 
         registerForNotifications();
     }

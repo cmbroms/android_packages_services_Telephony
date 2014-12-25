@@ -1,7 +1,4 @@
 /*
- * Copyright (c) 2011-2013 The Linux Foundation. All rights reserved.
- * Not a Contribution.
- *
  * Copyright (C) 2009 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +20,6 @@ import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneConstants;
 
 import android.content.DialogInterface;
-import android.net.Uri;
 import android.os.AsyncResult;
 import android.os.Bundle;
 import android.os.Handler;
@@ -33,8 +29,6 @@ import android.preference.Preference;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceScreen;
 import android.util.Log;
-
-import static com.android.internal.telephony.MSimConstants.SUBSCRIPTION_KEY;
 
 public class CdmaCallOptions extends PreferenceActivity {
     private static final String LOG_TAG = "CdmaCallOptions";
@@ -48,14 +42,9 @@ public class CdmaCallOptions extends PreferenceActivity {
         super.onCreate(icicle);
 
         addPreferencesFromResource(R.xml.cdma_call_privacy);
-        // getting selected subscription
-        int subscription = getIntent().getIntExtra(SUBSCRIPTION_KEY,
-                PhoneGlobals.getInstance().getDefaultSubscription());
 
-        Log.d(LOG_TAG, "Getting CDMACallOptions subscription =" + subscription);
-        Phone phone = PhoneGlobals.getInstance().getPhone(subscription);
-
-        PhoneGlobals.initCallWaitingPref(this, subscription);
+        Phone phone = PhoneUtils.getPhoneFromIntent(getIntent());
+        Log.d(LOG_TAG, "Get CDMACallOptions phoneId = " + phone.getPhoneId());
 
         mButtonVoicePrivacy = (CheckBoxPreference) findPreference(BUTTON_VP_KEY);
         if (phone.getPhoneType() != PhoneConstants.PHONE_TYPE_CDMA

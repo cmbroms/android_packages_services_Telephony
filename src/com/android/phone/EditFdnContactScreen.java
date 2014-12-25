@@ -35,11 +35,9 @@ import android.os.Handler;
 import android.provider.Contacts.PeopleColumns;
 import android.provider.Contacts.PhonesColumns;
 import android.telephony.PhoneNumberUtils;
-import android.text.Editable;
 import android.text.Selection;
 import android.text.Spannable;
 import android.text.TextUtils;
-import android.text.TextWatcher;
 import android.text.method.DialerKeyListener;
 import android.util.Log;
 import android.view.Menu;
@@ -55,8 +53,8 @@ import android.widget.Toast;
 import com.android.internal.telephony.IccCardConstants;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneFactory;
+import static com.android.internal.telephony.PhoneConstants.SUBSCRIPTION_KEY;
 import com.android.internal.telephony.TelephonyIntents;
-import static com.android.internal.telephony.MSimConstants.SUBSCRIPTION_KEY;
 
 /**
  * Activity to let the user add or edit an FDN contact.
@@ -69,21 +67,26 @@ public class EditFdnContactScreen extends Activity {
     private static final int MENU_IMPORT = 1;
     private static final int MENU_DELETE = 2;
 
-    protected static final String INTENT_EXTRA_NAME = "name";
-    protected static final String INTENT_EXTRA_NUMBER = "number";
+    private static final String INTENT_EXTRA_NAME = "name";
+    private static final String INTENT_EXTRA_NUMBER = "number";
 
     private static final int PIN2_REQUEST_CODE = 100;
 
-    protected String mName;
-    protected String mNumber;
-    protected String mPin2;
-    protected boolean mAddContact;
-    protected QueryHandler mQueryHandler;
+    //Delay in milli sec
+    private static final int DELAY_POST_RESULT_MS = 100;
+
+    private String mName;
+    private String mNumber;
+    private String mPin2;
+    private boolean mAddContact;
+    private QueryHandler mQueryHandler;
 
     private EditText mNameField;
     private EditText mNumberField;
     private LinearLayout mPinFieldContainer;
     private Button mButton;
+
+    private long mSubId;
 
     private Handler mHandler = new Handler();
 
@@ -107,12 +110,11 @@ public class EditFdnContactScreen extends Activity {
     private BroadcastReceiver mSimStateChangedReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (intent != null
-                    && intent.getAction().equals(
-                            TelephonyIntents.ACTION_SIM_STATE_CHANGED)) {
-                String stateExtra = intent
-                        .getStringExtra(IccCardConstants.INTENT_KEY_ICC_STATE);
-                if (IccCardConstants.INTENT_VALUE_ICC_ABSENT.equals(stateExtra)) {
+            if (intent != null && intent.getAction().equals(
+                    TelephonyIntents.ACTION_SIM_STATE_CHANGED)) {
+                String stateExtra = intent.getStringExtra(IccCardConstants.INTENT_KEY_ICC_STATE);
+                if (IccCardConstants.INTENT_VALUE_ICC_ABSENT.equals(stateExtra) &&
+                        PhoneUtils.getSubIdFromIntent(intent) == mSubId) {
                     handleSimAbsentIntent(context, intent);
                 }
             }
@@ -122,8 +124,7 @@ public class EditFdnContactScreen extends Activity {
     protected void handleSimAbsentIntent(Context context, Intent intent) {
         String absentReason = intent
                 .getStringExtra(IccCardConstants.INTENT_KEY_LOCKED_REASON);
-        if (!IccCardConstants.INTENT_VALUE_ABSENT_ON_PERM_DISABLED
-                .equals(absentReason)) {
+        if (!IccCardConstants.INTENT_VALUE_ABSENT_ON_PERM_DISABLED.equals(absentReason)) {
             Toast.makeText(context, R.string.fdn_service_unavailable,
                     Toast.LENGTH_SHORT).show();
         }
@@ -256,12 +257,13 @@ public class EditFdnContactScreen extends Activity {
         return super.onOptionsItemSelected(item);
     }
 
-    protected void resolveIntent() {
+    private void resolveIntent() {
         Intent intent = getIntent();
 
         mName =  intent.getStringExtra(INTENT_EXTRA_NAME);
         mNumber =  intent.getStringExtra(INTENT_EXTRA_NUMBER);
 
+        mSubId = PhoneUtils.getSubIdFromIntent(intent);
         mAddContact = TextUtils.isEmpty(mNumber);
     }
 
@@ -283,7 +285,6 @@ public class EditFdnContactScreen extends Activity {
             mNumberField.setKeyListener(DialerKeyListener.getInstance());
             mNumberField.setOnFocusChangeListener(mOnFocusChangeHandler);
             mNumberField.setOnClickListener(mClicked);
-            mNumberField.addTextChangedListener(mNumberTextWatcher);
         }
 
         if (!mAddContact) {
@@ -298,24 +299,22 @@ public class EditFdnContactScreen extends Activity {
         mButton = (Button) findViewById(R.id.button);
         if (mButton != null) {
             mButton.setOnClickListener(mClicked);
-            // will be enabled by text watcher
-            mButton.setEnabled(false);
         }
 
         mPinFieldContainer = (LinearLayout) findViewById(R.id.pinc);
 
     }
 
-    protected String getNameFromTextField() {
+    private String getNameFromTextField() {
         return mNameField.getText().toString();
     }
 
-    protected String getNumberFromTextField() {
+    private String getNumberFromTextField() {
         return mNumberField.getText().toString();
     }
 
-    protected Uri getContentURI() {
-        return Uri.parse("content://icc/fdn");
+    private Uri getContentURI() {
+        return PhoneUtils.getUri(Uri.parse("content://icc/fdn"), mSubId);
     }
 
     /**
@@ -324,14 +323,12 @@ public class EditFdnContactScreen extends Activity {
       *
       * TODO: Fix this logic.
       */
-     protected boolean isValidNumber(String number) {
-         // Although number is not empty(checked in method onClick), add null
-         // pointer check to ensure the robustness of the code
-         return (null != number) && (number.length() <= 20);
+     private boolean isValidNumber(String number) {
+         return (number.length() <= 20);
      }
 
 
-    protected void addContact() {
+    private void addContact() {
         if (DBG) log("addContact");
 
         final String number = PhoneNumberUtils.convertAndStrip(getNumberFromTextField());
@@ -347,6 +344,7 @@ public class EditFdnContactScreen extends Activity {
         bundle.put("tag", getNameFromTextField());
         bundle.put("number", number);
         bundle.put("pin2", mPin2);
+        bundle.put(SUBSCRIPTION_KEY, mSubId);
 
         mQueryHandler = new QueryHandler(getContentResolver());
         mQueryHandler.startInsert(0, null, uri, bundle);
@@ -354,7 +352,7 @@ public class EditFdnContactScreen extends Activity {
         showStatus(getResources().getText(R.string.adding_fdn_contact));
     }
 
-    protected void updateContact() {
+    private void updateContact() {
         if (DBG) log("updateContact");
 
         final String name = getNameFromTextField();
@@ -372,6 +370,7 @@ public class EditFdnContactScreen extends Activity {
         bundle.put("newTag", name);
         bundle.put("newNumber", number);
         bundle.put("pin2", mPin2);
+        bundle.put(SUBSCRIPTION_KEY, mSubId);
 
         mQueryHandler = new QueryHandler(getContentResolver());
         mQueryHandler.startUpdate(0, null, uri, bundle, null, null);
@@ -382,13 +381,14 @@ public class EditFdnContactScreen extends Activity {
     /**
      * Handle the delete command, based upon the state of the Activity.
      */
-    protected void deleteSelected() {
+    private void deleteSelected() {
         // delete ONLY if this is NOT a new contact.
         if (!mAddContact) {
             Intent intent = new Intent();
             intent.setClass(this, DeleteFdnContactScreen.class);
             intent.putExtra(INTENT_EXTRA_NAME, mName);
             intent.putExtra(INTENT_EXTRA_NUMBER, mNumber);
+            intent.putExtra(SUBSCRIPTION_KEY, mSubId);
             startActivity(intent);
         }
         finish();
@@ -400,7 +400,7 @@ public class EditFdnContactScreen extends Activity {
         startActivityForResult(intent, PIN2_REQUEST_CODE);
     }
 
-    protected void displayProgress(boolean flag) {
+    private void displayProgress(boolean flag) {
         // indicate we are busy.
         mDataBusy = flag;
         getWindow().setFeatureInt(
@@ -415,14 +415,14 @@ public class EditFdnContactScreen extends Activity {
      * Removed the status field, with preference to displaying a toast
      * to match the rest of settings UI.
      */
-    protected void showStatus(CharSequence statusMsg) {
+    private void showStatus(CharSequence statusMsg) {
         if (statusMsg != null) {
             Toast.makeText(this, statusMsg, Toast.LENGTH_LONG)
                     .show();
         }
     }
 
-    protected void handleResult(boolean success, boolean invalidNumber) {
+    private void handleResult(boolean success, boolean invalidNumber) {
         if (success) {
             if (DBG) log("handleResult: success!");
             showStatus(getResources().getText(mAddContact ?
@@ -432,9 +432,10 @@ public class EditFdnContactScreen extends Activity {
             if (invalidNumber) {
                 showStatus(getResources().getText(R.string.fdn_invalid_number));
             } else {
-               if (PhoneFactory.getDefaultPhone().getIccCard().getIccPin2Blocked()) {
+               int phoneId = PhoneUtils.getPhoneId(mSubId);
+               if (PhoneFactory.getPhone(phoneId).getIccCard().getIccPin2Blocked()) {
                     showStatus(getResources().getText(R.string.fdn_enable_puk2_requested));
-                } else if (PhoneFactory.getDefaultPhone().getIccCard().getIccPuk2Blocked()) {
+                } else if (PhoneFactory.getPhone(phoneId).getIccCard().getIccPuk2Blocked()) {
                     showStatus(getResources().getText(R.string.puk2_blocked));
                 } else {
                     // There's no way to know whether the failure is due to incorrect PIN2 or
@@ -465,9 +466,6 @@ public class EditFdnContactScreen extends Activity {
             } else if (v == mNumberField) {
                 mButton.requestFocus();
             } else if (v == mButton) {
-                if (TextUtils.isEmpty(mNameField.getText())) {
-                    mNameField.setText(getNumberFromTextField());
-                }
                 // Authenticate the pin AFTER the contact information
                 // is entered, and if we're not busy.
                 if (!mDataBusy) {
@@ -488,20 +486,7 @@ public class EditFdnContactScreen extends Activity {
         }
     };
 
-    private final TextWatcher mNumberTextWatcher = new TextWatcher() {
-        @Override
-        public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-        }
-        @Override
-        public void onTextChanged(CharSequence s, int start, int before, int count) {
-        }
-        @Override
-        public void afterTextChanged(Editable s) {
-            mButton.setEnabled(!TextUtils.isEmpty(s));
-        }
-    };
-
-    protected class QueryHandler extends AsyncQueryHandler {
+    private class QueryHandler extends AsyncQueryHandler {
         public QueryHandler(ContentResolver cr) {
             super(cr);
         }
@@ -510,18 +495,38 @@ public class EditFdnContactScreen extends Activity {
         protected void onQueryComplete(int token, Object cookie, Cursor c) {
         }
 
+        private void postDelayedResult (boolean result, boolean invalidNumber) {
+            final boolean res = result;
+            final boolean isInvalidNum = invalidNumber;
+            if(DBG) log("postDelayedResult: result will be posted after " +
+                    DELAY_POST_RESULT_MS + "ms");
+
+            // UiccCardApplication is queried to retreive the status of pin2 when the
+            // insert/update operation fails. Therefore UiccCardApplication needs to be
+            // updated before EditFdnContactScreen queries the pin2 status.
+            // Adding the delay before posting the result; This delay will give time for
+            // the correct pin2 status to be updated in UiccCArdApplication.
+            mHandler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if(DBG) log("postDelayedResult: delay over");
+                    handleResult(res, isInvalidNum);
+                }
+            }, DELAY_POST_RESULT_MS);
+        }
+
         @Override
         protected void onInsertComplete(int token, Object cookie, Uri uri) {
             if (DBG) log("onInsertComplete");
             displayProgress(false);
-            handleResult(uri != null, false);
+            postDelayedResult(uri != null, false);
         }
 
         @Override
         protected void onUpdateComplete(int token, Object cookie, int result) {
             if (DBG) log("onUpdateComplete");
             displayProgress(false);
-            handleResult(result > 0, false);
+            postDelayedResult(result > 0, false);
         }
 
         @Override
@@ -529,7 +534,7 @@ public class EditFdnContactScreen extends Activity {
         }
     }
 
-    protected void log(String msg) {
+    private void log(String msg) {
         Log.d(LOG_TAG, "[EditFdnContact] " + msg);
     }
 }

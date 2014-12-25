@@ -38,13 +38,14 @@ import android.os.Handler;
 import android.os.Message;
 import android.preference.Preference;
 import android.preference.PreferenceScreen;
-import android.telephony.MSimTelephonyManager;
+import android.provider.Settings;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
+import android.telephony.SubscriptionManager;
 import android.view.Menu;
 import android.view.MenuItem;
 
-import com.android.internal.telephony.MSimConstants;
+import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneFactory;
 import com.android.internal.telephony.TelephonyIntents;
@@ -63,7 +64,6 @@ import com.android.internal.telephony.uicc.IccFileHandler;
 import com.android.internal.telephony.uicc.UiccCard;
 import com.android.internal.telephony.uicc.UiccCardApplication;
 import com.android.internal.telephony.uicc.UiccController;
-import com.codeaurora.telephony.msim.MSimUiccController;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -95,7 +95,10 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
 
     private int mNumRec = 0;
 
-    private static final int UPLMN_W_ACT_LEN = 5;
+   /* 5n bytes:
+    1 to 3  nth PLMN (highest priority)
+    4 to 5  nth PLMN Access Technology Identifier */
+    private static final int UPLMN_SEL_DATA_LEN = 5;
 
     private static final int GSM_MASK = 1;
 
@@ -134,8 +137,8 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
         super.onCreate(icicle);
         addPreferencesFromResource(R.xml.uplmn_list);
         mUPLMNListContainer = (PreferenceScreen) findPreference(BUTTON_UPLMN_LIST_KEY);
-        mSubscription = getIntent().getIntExtra(MSimConstants.SUBSCRIPTION_KEY,
-                MSimConstants.DEFAULT_SUBSCRIPTION);
+        mSubscription = getIntent().getIntExtra(PhoneConstants.SUBSCRIPTION_KEY,
+                SubscriptionManager.getPhoneId(SubscriptionManager.getDefaultSubId()));
         loadIccFileHandler();
 
         mIntentFilter = new IntentFilter(Intent.ACTION_AIRPLANE_MODE_CHANGED);
@@ -144,8 +147,8 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
 
     private void loadIccFileHandler() {
         UiccCard newCard = null;
-        if (MSimTelephonyManager.getDefault().isMultiSimEnabled()) {
-            MSimUiccController uiccController = MSimUiccController.getInstance();
+        if (TelephonyManager.getDefault().isMultiSimEnabled()) {
+            UiccController uiccController = UiccController.getInstance();
             if (uiccController != null) {
                 newCard = uiccController.getUiccCard(mSubscription);
             }
@@ -156,15 +159,15 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
 
             }
         }
-        Log.d(LOG_TAG, "newCard = " + newCard);
+        log("newCard = " + newCard);
         if (newCard != null) {
             // Always get IccApplication 0.
             UiccCardApplication newUiccApplication = newCard
                     .getApplication(UiccController.APP_FAM_3GPP);
-            Log.d(LOG_TAG, "newUiccApplication = " + newUiccApplication);
+            log("newUiccApplication = " + newUiccApplication);
             if (newUiccApplication != null) {
                 mIccFileHandler = newUiccApplication.getIccFileHandler();
-                Log.d(LOG_TAG, "fh = " + mIccFileHandler);
+                log("fh = " + mIccFileHandler);
             }
         }
     }
@@ -179,9 +182,8 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
         super.onResume();
         getUPLMNInfoFromEf();
         init(this, false);
-        mAirplaneModeOn = android.provider.Settings.System.getInt(
-                getContentResolver(),
-                android.provider.Settings.System.AIRPLANE_MODE_ON, -1) == 1;
+        mAirplaneModeOn =
+            Settings.System.getInt(getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) == 1;
     }
 
     @Override
@@ -223,7 +225,7 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
 
     private void init(TimeConsumingPreferenceListener listener,
             boolean skipReading) {
-        Log.d(LOG_TAG, "init ... ...");
+        log("init ... ...");
         if (!skipReading) {
             if (listener != null) {
                 listener.onStarted(mUPLMNListContainer, true);
@@ -237,7 +239,7 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
     }
 
     private void getUPLMNInfoFromEf() {
-        Log.d(LOG_TAG, "UPLMNInfoFromEf Start read...");
+        log("UPLMNInfoFromEf Start read...");
         if (mIccFileHandler != null) {
             readEfFromIcc(mIccFileHandler, IccConstants.EF_PLMNWACT);
         } else {
@@ -270,15 +272,14 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
         }
         mUPLMNList = list;
         if (list == null) {
-            Log.d(LOG_TAG, "refreshUPLMNListPreference : NULL UPLMN list!");
+            log("refreshUPLMNListPreference : NULL UPLMN list!");
         } else {
-            Log.d(LOG_TAG,
-                    "refreshUPLMNListPreference : list.size()" + list.size());
+            log("refreshUPLMNListPreference : list.size()" + list.size());
         }
 
         if (list == null || list.size() == 0) {
             if (DBG) {
-                Log.d(LOG_TAG, "refreshUPLMNListPreference : NULL UPLMN list!");
+                log("refreshUPLMNListPreference : NULL UPLMN list!");
             }
             if (list == null) {
                 mUPLMNList = new ArrayList<UPLMNInfoWithEf>();
@@ -289,7 +290,7 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
         for (UPLMNInfoWithEf network : list) {
             addUPLMNPreference(network);
             if (DBG) {
-                Log.d(LOG_TAG, network.toString());
+                log(network.toString());
             }
         }
     }
@@ -367,8 +368,7 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
 
     protected void onActivityResult(final int requestCode,
             final int resultCode, final Intent intent) {
-        Log.d(LOG_TAG, "resultCode = " + resultCode);
-        Log.d(LOG_TAG, "requestCode = " + requestCode);
+        log("resultCode = " + resultCode + ", requestCode = " + requestCode);
 
         if (intent != null) {
             UPLMNInfoWithEf newInfo = createNetworkInfofromIntent(intent);
@@ -393,15 +393,15 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
 
     private void handleSetUPLMN(ArrayList<UPLMNInfoWithEf> list) {
         onStarted(this.mUPLMNListContainer, false);
-        byte[] data = new byte[mNumRec * UPLMN_W_ACT_LEN];
+        byte[] data = new byte[mNumRec * UPLMN_SEL_DATA_LEN];
         byte[] mccmnc = new byte[6];
         for (int i = 0; i < mNumRec; i++) {
-            data[i * UPLMN_W_ACT_LEN] = (byte) 0xFF;
-            data[i * UPLMN_W_ACT_LEN + 1] = (byte) 0xFF;
-            data[i * UPLMN_W_ACT_LEN + 2] = (byte) 0xFF;
+            data[i * UPLMN_SEL_DATA_LEN] = (byte) 0xFF;
+            data[i * UPLMN_SEL_DATA_LEN + 1] = (byte) 0xFF;
+            data[i * UPLMN_SEL_DATA_LEN + 2] = (byte) 0xFF;
 
-            data[i * UPLMN_W_ACT_LEN + 3] = 0;
-            data[i * UPLMN_W_ACT_LEN + 4] = 0;
+            data[i * UPLMN_SEL_DATA_LEN + 3] = 0;
+            data[i * UPLMN_SEL_DATA_LEN + 4] = 0;
         }
         for (int i = 0; ((i < list.size()) && (i < mNumRec)); i++) {
             UPLMNInfoWithEf ni = list.get(i);
@@ -409,42 +409,42 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
             if (strOperNumeric == null) {
                 break;
             }
-            Log.d(LOG_TAG, "strOperNumeric = " + strOperNumeric);
+            log("strOperNumeric = " + strOperNumeric);
             if (strOperNumeric.length() == 5) {
                 strOperNumeric = strOperNumeric + "F";
             }
             mccmnc = hexStringToBytes(strOperNumeric);
 
-            data[i * UPLMN_W_ACT_LEN] = (byte) ((mccmnc[1] << 4) + mccmnc[0]);
-            Log.d(LOG_TAG, "mccmnc[0] = " + mccmnc[0]);
-            Log.d(LOG_TAG, "mccmnc[1] = " + mccmnc[1]);
-            Log.d(LOG_TAG, "data[i*UPLMN_W_ACT_LEN] = "
-                    + data[i * UPLMN_W_ACT_LEN]);
-            data[i * UPLMN_W_ACT_LEN + 1] = (byte) ((mccmnc[5] << 4) + mccmnc[2]);
-            Log.d(LOG_TAG, "data[1] = " + data[1]);
-            data[i * UPLMN_W_ACT_LEN + 2] = (byte) ((mccmnc[4] << 4) + mccmnc[3]);
-            Log.d(LOG_TAG, "data[2] = " + data[2]);
+            data[i * UPLMN_SEL_DATA_LEN] = (byte) ((mccmnc[1] << 4) + mccmnc[0]);
+            log("mccmnc[0] = " + mccmnc[0]);
+            log("mccmnc[1] = " + mccmnc[1]);
+            log("data[i*UPLMN_SEL_DATA_LEN] = "
+                    + data[i * UPLMN_SEL_DATA_LEN]);
+            data[i * UPLMN_SEL_DATA_LEN + 1] = (byte) ((mccmnc[5] << 4) + mccmnc[2]);
+            log("data[1] = " + data[1]);
+            data[i * UPLMN_SEL_DATA_LEN + 2] = (byte) ((mccmnc[4] << 4) + mccmnc[3]);
+            log("data[2] = " + data[2]);
             if ((ni.getNetworMode() & UMTS_MASK) != 0) {
-                data[i * UPLMN_W_ACT_LEN + 3] = (byte) 0x80;
+                data[i * UPLMN_SEL_DATA_LEN + 3] = (byte) 0x80;
             } else {
-                data[i * UPLMN_W_ACT_LEN + 3] = 0;
+                data[i * UPLMN_SEL_DATA_LEN + 3] = 0;
             }
             if ((ni.getNetworMode() & LTE_MASK) != 0) {
-                data[i * UPLMN_W_ACT_LEN + 3] = (byte) (data[i
-                        * UPLMN_W_ACT_LEN + 3] | 0x40);
+                data[i * UPLMN_SEL_DATA_LEN + 3] = (byte) (data[i
+                        * UPLMN_SEL_DATA_LEN + 3] | 0x40);
             }
             if ((ni.getNetworMode() & GSM_MASK) != 0) {
-                data[i * UPLMN_W_ACT_LEN + 4] = (byte) 0x80;
+                data[i * UPLMN_SEL_DATA_LEN + 4] = (byte) 0x80;
             } else {
-                data[i * UPLMN_W_ACT_LEN + 4] = 0;
+                data[i * UPLMN_SEL_DATA_LEN + 4] = 0;
             }
 
             if ((ni.getNetworMode() & GSM_COMPACT_MASK) != 0) {
-                data[i * UPLMN_W_ACT_LEN + 4] = (byte) (data[i
-                        * UPLMN_W_ACT_LEN + 4] | 0x40);
+                data[i * UPLMN_SEL_DATA_LEN + 4] = (byte) (data[i
+                        * UPLMN_SEL_DATA_LEN + 4] | 0x40);
             }
         }
-        Log.d(LOG_TAG, "update EFuplmn Start.");
+        log("update EFuplmn Start.");
         if (mIccFileHandler != null) {
             writeEfToIcc(mIccFileHandler, data, IccConstants.EF_PLMNWACT);
         }
@@ -452,7 +452,7 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
     }
 
     private void handleAddList(UPLMNInfoWithEf newInfo) {
-        Log.d(LOG_TAG, "handleAddList: add new network: " + newInfo);
+        log("handleAddList: add new network: " + newInfo);
         dumpUPLMNInfo(mUPLMNList);
         ArrayList<UPLMNInfoWithEf> list = new ArrayList<UPLMNInfoWithEf>();
         for (int i = 0; i < mUPLMNList.size(); i++) {
@@ -474,15 +474,14 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
             return;
         }
         for (int i = 0; i < list.size(); i++) {
-            Log.d(LOG_TAG, "dumpUPLMNInfo : " + list.get(i).toString());
+            log("dumpUPLMNInfo : " + list.get(i).toString());
         }
     }
 
     private ArrayList<UPLMNInfoWithEf> handleModifiedList(
             UPLMNInfoWithEf newInfo, UPLMNInfoWithEf oldInfo) {
-        Log.d(LOG_TAG,
-                "handleModifiedList: change old info: " + oldInfo.toString()
-                        + "-------new info: " + newInfo.toString());
+        log("handleModifiedList: change old info: " + oldInfo.toString()
+            + "-------new info: " + newInfo.toString());
         dumpUPLMNInfo(mUPLMNList);
 
         PriorityCompare pc = new PriorityCompare();
@@ -518,7 +517,7 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
     }
 
     private ArrayList<UPLMNInfoWithEf> handleDeleteList(UPLMNInfoWithEf network) {
-        Log.d(LOG_TAG, "handleDeleteList : " + network.toString());
+        log("handleDeleteList : " + network.toString());
         dumpUPLMNInfo(mUPLMNList);
 
         ArrayList<UPLMNInfoWithEf> list = new ArrayList<UPLMNInfoWithEf>();
@@ -564,7 +563,7 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
 
         public void handleGetUPLMNList(Message msg) {
             if (DBG) {
-                Log.d(LOG_TAG, "handleGetUPLMNList: done");
+                log("handleGetUPLMNList: done");
             }
 
             if (msg.arg2 == MyHandler.MESSAGE_GET_UPLMN_LIST) {
@@ -576,7 +575,7 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
             AsyncResult ar = (AsyncResult) msg.obj;
             boolean isUserException = false;
             if (ar.exception != null) {
-                Log.d(LOG_TAG, "handleGetUPLMNList with exception = "
+                log("handleGetUPLMNList with exception = "
                         + ar.exception);
                 if (mUPLMNList == null) {
                     mUPLMNList = new ArrayList<UPLMNInfoWithEf>();
@@ -588,16 +587,16 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
 
         public void handleSetEFDone(Message msg) {
             if (DBG) {
-                Log.d(LOG_TAG, "handleSetEFDone: done");
+                log("handleSetEFDone: done");
             }
             AsyncResult ar = (AsyncResult) msg.obj;
             boolean isUserException = false;
             if (ar.exception != null) {
-                Log.d(LOG_TAG, "handleSetEFDone with exception = "
+                log("handleSetEFDone with exception = "
                         + ar.exception);
             } else {
                 if (DBG) {
-                    Log.d(LOG_TAG, "handleSetEFDone: with OK result!");
+                    log("handleSetEFDone: with OK result!");
                 }
             }
             getUPLMNInfoFromEf();
@@ -605,13 +604,13 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
 
         public void handleGetEFDone(Message msg) {
             if (DBG) {
-                Log.d(LOG_TAG, "handleGetEFDone: done");
+                log("handleGetEFDone: done");
             }
 
             AsyncResult ar = (AsyncResult) msg.obj;
 
             if (ar.exception != null) {
-                Log.d(LOG_TAG, "handleGetEFDone with exception = "
+                log("handleGetEFDone with exception = "
                         + ar.exception);
                 Message message = mHandler.obtainMessage();
                 message.what = MESSAGE_GET_UPLMN_LIST;
@@ -620,9 +619,9 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
                 mHandler.sendMessage(message);
             } else {
                 byte[] data = (byte[]) ar.result;
-                Log.d(LOG_TAG, "result=" + IccUtils.bytesToHexString(data));
-                mNumRec = data.length / UPLMN_W_ACT_LEN;
-                Log.d(LOG_TAG, "mNumRec=" + mNumRec);
+                log("result=" + IccUtils.bytesToHexString(data));
+                mNumRec = data.length / UPLMN_SEL_DATA_LEN;
+                log("mNumRec=" + mNumRec);
                 AsyncResult mret;
                 ArrayList<UPLMNInfoWithEf> ret;
                 ret = new ArrayList<UPLMNInfoWithEf>(mNumRec);
@@ -631,39 +630,41 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
                 int num_mnc_digits = 0;
                 int access_tech = 0;
                 String strOperName = null;
+                // Covert the plmn data to the EF_OPLMNwACT,
+                // mcc+mnc+access technology is one record for the EF
                 for (int i = 0; i < mNumRec; i++) {
                     access_tech = 0;
-                    mcc[0] = (byte) (data[i * UPLMN_W_ACT_LEN] & 0x0F);
-                    mcc[1] = (byte) ((data[i * UPLMN_W_ACT_LEN] & 0xF0) >> 4);
-                    mcc[2] = (byte) (data[i * UPLMN_W_ACT_LEN + 1] & 0x0F);
+                    mcc[0] = (byte) (data[i * UPLMN_SEL_DATA_LEN] & 0x0F);
+                    mcc[1] = (byte) ((data[i * UPLMN_SEL_DATA_LEN] & 0xF0) >> 4);
+                    mcc[2] = (byte) (data[i * UPLMN_SEL_DATA_LEN + 1] & 0x0F);
 
-                    mnc[0] = (byte) (data[i * UPLMN_W_ACT_LEN + 2] & 0x0F);
-                    mnc[1] = (byte) ((data[i * UPLMN_W_ACT_LEN + 2] & 0xF0) >> 4);
-                    if ((byte) (data[i * UPLMN_W_ACT_LEN + 1] & 0xF0) == (byte) 0xF0) {
+                    mnc[0] = (byte) (data[i * UPLMN_SEL_DATA_LEN + 2] & 0x0F);
+                    mnc[1] = (byte) ((data[i * UPLMN_SEL_DATA_LEN + 2] & 0xF0) >> 4);
+                    if ((byte) (data[i * UPLMN_SEL_DATA_LEN + 1] & 0xF0) == (byte) 0xF0) {
                         num_mnc_digits = 2;
-                        mnc[2] = (byte) ((data[i * UPLMN_W_ACT_LEN + 1] & 0xF0) >> 4);
+                        mnc[2] = (byte) ((data[i * UPLMN_SEL_DATA_LEN + 1] & 0xF0) >> 4);
                     } else {
                         num_mnc_digits = 3;
-                        mnc[2] = (byte) ((data[i * UPLMN_W_ACT_LEN + 1] & 0xF0) >> 4);
+                        mnc[2] = (byte) ((data[i * UPLMN_SEL_DATA_LEN + 1] & 0xF0) >> 4);
                     }
 
-                    if ((data[i * UPLMN_W_ACT_LEN + 3] & 0x40) != 0) {
+                    if ((data[i * UPLMN_SEL_DATA_LEN + 3] & 0x40) != 0) {
                         access_tech = access_tech | LTE_MASK;
                     }
-                    if ((data[i * UPLMN_W_ACT_LEN + 3] & 0x80) != 0) {
+                    if ((data[i * UPLMN_SEL_DATA_LEN + 3] & 0x80) != 0) {
                         access_tech = access_tech | UMTS_MASK;
                     }
-                    if ((data[i * UPLMN_W_ACT_LEN + 4] & 0x80) != 0) {
+                    if ((data[i * UPLMN_SEL_DATA_LEN + 4] & 0x80) != 0) {
                         access_tech = access_tech | GSM_MASK;
                     }
 
-                    if ((data[i * UPLMN_W_ACT_LEN + 4] & 0x40) != 0) {
+                    if ((data[i * UPLMN_SEL_DATA_LEN + 4] & 0x40) != 0) {
                         access_tech = access_tech | GSM_COMPACT_MASK;
                     }
 
-                    if ((data[i * UPLMN_W_ACT_LEN] != (byte) 0xFF)
-                            && (data[i * UPLMN_W_ACT_LEN + 1] != (byte) 0xFF)
-                            && (data[i * UPLMN_W_ACT_LEN + 2] != (byte) 0xFF)) {
+                    if ((data[i * UPLMN_SEL_DATA_LEN] != (byte) 0xFF)
+                            && (data[i * UPLMN_SEL_DATA_LEN + 1] != (byte) 0xFF)
+                            && (data[i * UPLMN_SEL_DATA_LEN + 2] != (byte) 0xFF)) {
                         if (num_mnc_digits == 2) {
                             strOperName = bytesToHexString(mcc)
                                     + bytesToHexString(mnc).substring(0, 2);
@@ -678,9 +679,9 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
                 Message message = mHandler.obtainMessage();
                 message.what = MESSAGE_GET_UPLMN_LIST;
                 if (ret == null) {
-                    Log.d(LOG_TAG, "handleGetEFDone : NULL ret list!");
+                    log("handleGetEFDone : NULL ret list!");
                 } else {
-                    Log.d(LOG_TAG, "handleGetEFDone : ret.size()" + ret.size());
+                    log("handleGetEFDone : ret.size()" + ret.size());
                 }
                 mret = new AsyncResult(message.obj, (Object) ret, null);
 
@@ -730,7 +731,7 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
 
         for (int i = 0; i < sz; i++) {
             ret[i] = (byte) (hexCharToInt(s.charAt(i)));
-            Log.d(LOG_TAG, "hexStringToBytes = " + ret[i]);
+            log("hexStringToBytes = " + ret[i]);
         }
 
         return ret;
@@ -745,5 +746,9 @@ public class UserPLMNListPreference extends TimeConsumingPreferenceActivity {
             return (c - 'a' + 10);
 
         throw new RuntimeException("invalid hex char '" + c + "'");
+    }
+
+    private static void log(String msg) {
+        Log.d(LOG_TAG, msg);
     }
 }

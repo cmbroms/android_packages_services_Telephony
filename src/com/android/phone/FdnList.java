@@ -1,7 +1,4 @@
 /*
- * Copyright (c) 2011-2013 The Linux Foundation. All rights reserved.
- * Not a Contribution.
- *
  * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,23 +21,25 @@ import android.content.Intent;
 import android.content.res.Resources;
 import android.net.Uri;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.ListView;
 
-import static com.android.internal.telephony.MSimConstants.SUBSCRIPTION_KEY;
+import static com.android.internal.telephony.PhoneConstants.SUBSCRIPTION_KEY;
 /**
- * FDN List UI for the Phone app.
+ * Fixed Dialing Number (FDN) List UI for the Phone app. FDN is a feature of the service provider
+ * that allows a user to specify a limited set of phone numbers that the SIM can dial.
  */
 public class FdnList extends ADNList {
     private static final int MENU_ADD = 1;
     private static final int MENU_EDIT = 2;
     private static final int MENU_DELETE = 3;
 
-    protected static final String INTENT_EXTRA_NAME = "name";
-    protected static final String INTENT_EXTRA_NUMBER = "number";
+    private static final String INTENT_EXTRA_NAME = "name";
+    private static final String INTENT_EXTRA_NUMBER = "number";
+
+    private long mSubId;
 
     @Override
     public void onCreate(Bundle icicle) {
@@ -56,7 +55,9 @@ public class FdnList extends ADNList {
     @Override
     protected Uri resolveIntent() {
         Intent intent = getIntent();
-        intent.setData(Uri.parse("content://icc/fdn"));
+        mSubId = PhoneUtils.getSubIdFromIntent(intent);
+
+        intent.setData(PhoneUtils.getUri(Uri.parse("content://icc/fdn"), mSubId));
         return intent.getData();
     }
 
@@ -121,10 +122,11 @@ public class FdnList extends ADNList {
         editSelected(position);
     }
 
-    protected void addContact() {
+    private void addContact() {
         // if we don't put extras "name" when starting this activity, then
         // EditFdnContactScreen treats it like add contact.
         Intent intent = new Intent();
+        intent.putExtra(SUBSCRIPTION_KEY, mSubId);
         intent.setClass(this, EditFdnContactScreen.class);
         startActivity(intent);
     }
@@ -142,7 +144,7 @@ public class FdnList extends ADNList {
     /**
      * Edit the item at the selected position in the list.
      */
-    protected void editSelected(int position) {
+    private void editSelected(int position) {
         if (mCursor.moveToPosition(position)) {
             String name = mCursor.getString(NAME_COLUMN);
             String number = mCursor.getString(NUMBER_COLUMN);
@@ -151,11 +153,12 @@ public class FdnList extends ADNList {
             intent.setClass(this, EditFdnContactScreen.class);
             intent.putExtra(INTENT_EXTRA_NAME, name);
             intent.putExtra(INTENT_EXTRA_NUMBER, number);
+            intent.putExtra(SUBSCRIPTION_KEY, mSubId);
             startActivity(intent);
         }
     }
 
-    protected void deleteSelected() {
+    private void deleteSelected() {
         if (mCursor.moveToPosition(getSelectedItemPosition())) {
             String name = mCursor.getString(NAME_COLUMN);
             String number = mCursor.getString(NUMBER_COLUMN);
@@ -164,12 +167,8 @@ public class FdnList extends ADNList {
             intent.setClass(this, DeleteFdnContactScreen.class);
             intent.putExtra(INTENT_EXTRA_NAME, name);
             intent.putExtra(INTENT_EXTRA_NUMBER, number);
+            intent.putExtra(SUBSCRIPTION_KEY, mSubId);
             startActivity(intent);
         }
-    }
-
-    @Override
-    protected void log(String msg) {
-        Log.d(TAG, "[FdnList] " + msg);
     }
 }

@@ -20,13 +20,14 @@ import android.app.Application;
 import android.content.res.Configuration;
 import android.os.UserHandle;
 
-import android.telephony.MSimTelephonyManager;
+import com.android.services.telephony.TelephonyGlobals;
 
 /**
  * Top-level Application class for the Phone app.
  */
 public class PhoneApp extends Application {
     PhoneGlobals mPhoneGlobals;
+    TelephonyGlobals mTelephonyGlobals;
 
     public PhoneApp() {
     }
@@ -36,12 +37,11 @@ public class PhoneApp extends Application {
         if (UserHandle.myUserId() == 0) {
             // We are running as the primary user, so should bring up the
             // global phone state.
-            if (MSimTelephonyManager.getDefault().isMultiSimEnabled()) {
-                mPhoneGlobals = new MSimPhoneGlobals(this);
-            } else {
-                mPhoneGlobals = new PhoneGlobals(this);
-            }
+            mPhoneGlobals = new PhoneGlobals(this);
             mPhoneGlobals.onCreate();
+
+            mTelephonyGlobals = new TelephonyGlobals(this);
+            mTelephonyGlobals.onCreate();
         }
     }
 }

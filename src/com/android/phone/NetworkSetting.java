@@ -1,7 +1,4 @@
 /*
- * Copyright (c) 2011-2013 The Linux Foundation. All rights reserved.
- * Not a Contribution.
- *
  * Copyright (C) 2006 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,12 +29,14 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.RemoteException;
+import android.os.UserManager;
 import android.preference.Preference;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceGroup;
 import android.preference.PreferenceScreen;
-import android.telephony.MSimTelephonyManager;
 import android.telephony.ServiceState;
+import android.telephony.TelephonyManager;
+import android.telephony.SubscriptionManager;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -48,7 +47,7 @@ import com.android.internal.telephony.OperatorInfo;
 import java.util.HashMap;
 import java.util.List;
 
-import static com.android.internal.telephony.MSimConstants.SUBSCRIPTION_KEY;
+import static com.android.internal.telephony.PhoneConstants.SUBSCRIPTION_KEY;
 
 /**
  * "Networks" settings UI for the Phone app.
@@ -83,6 +82,9 @@ public class NetworkSetting extends PreferenceActivity
     Phone mPhone;
     NetworkSettingDataManager mDataManager = null;
     protected boolean mIsForeground = false;
+
+    private UserManager mUm;
+    private boolean mUnavailable;
 
     /** message for network selection */
     String mNetworkSelectMsg;
@@ -170,8 +172,7 @@ public class NetworkSetting extends PreferenceActivity
             if (DBG) log("connection created, binding local service.");
             mNetworkQueryService = ((NetworkQueryService.LocalBinder) service).getService();
             // as soon as it is bound, run a query.
-            if (getApplicationContext().getResources().getBoolean(
-                    R.bool.config_disable_data_manual_plmn) && !isMultiSimModeDsda()) {
+            if (isDataDisableRequired()) {
                 mSearchButton.setEnabled(false);
                 Message onCompleteMsg = mHandler.obtainMessage(EVENT_NETWORK_DATA_MANAGER_DONE);
                 mDataManager.updateDataState(false, onCompleteMsg);
@@ -207,8 +208,7 @@ public class NetworkSetting extends PreferenceActivity
         boolean handled = false;
 
         if (preference == mSearchButton) {
-            if (getApplicationContext().getResources().getBoolean(
-                    R.bool.config_disable_data_manual_plmn) && !isMultiSimModeDsda()) {
+            if (isDataDisableRequired()) {
                 mSearchButton.setEnabled(false);
                 Message onCompleteMsg = mHandler.obtainMessage(EVENT_NETWORK_DATA_MANAGER_DONE);
                 mDataManager.updateDataState(false, onCompleteMsg);
@@ -258,14 +258,20 @@ public class NetworkSetting extends PreferenceActivity
     protected void onCreate(Bundle icicle) {
         super.onCreate(icicle);
 
+        mUm = (UserManager) getSystemService(Context.USER_SERVICE);
+
+        if (mUm.hasUserRestriction(UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS)) {
+            setContentView(R.layout.telephony_disallowed_preference_screen);
+            mUnavailable = true;
+            return;
+        }
+
         addPreferencesFromResource(R.xml.carrier_select);
 
-        int subscription = getIntent().getIntExtra(SUBSCRIPTION_KEY,
-                MSimPhoneGlobals.getInstance().getDefaultSubscription());
-        log("onCreate subscription :" + subscription);
-        mPhone = MSimPhoneGlobals.getInstance().getPhone(subscription);
+        mPhone = PhoneUtils.getPhoneFromIntent(getIntent());
+        log("onCreate subId :" + mPhone.getSubId());
         Intent intent = new Intent(this, NetworkQueryService.class);
-        intent.putExtra(SUBSCRIPTION_KEY, subscription);
+        intent.putExtra(SUBSCRIPTION_KEY, mPhone.getSubId());
 
         mNetworkList = (PreferenceGroup) getPreferenceScreen().findPreference(LIST_NETWORKS_KEY);
         mNetworkMap = new HashMap<Preference, OperatorInfo>();
@@ -283,8 +289,7 @@ public class NetworkSetting extends PreferenceActivity
         startService (intent);
         bindService (new Intent(this, NetworkQueryService.class), mNetworkQueryServiceConnection,
                 Context.BIND_AUTO_CREATE);
-        if (getApplicationContext().getResources().getBoolean(
-                R.bool.config_disable_data_manual_plmn) && !isMultiSimModeDsda()) {
+       if (isDataDisableRequired()) {
             mDataManager = new NetworkSettingDataManager(getApplicationContext());
         }
     }
@@ -307,12 +312,13 @@ public class NetworkSetting extends PreferenceActivity
      */
     @Override
     protected void onDestroy() {
+        if (!mUnavailable) {
+            // unbind the service.
+            unbindService(mNetworkQueryServiceConnection);
+        }
         if (mDataManager != null) {
             mDataManager.updateDataState(true, null);
         }
-        // unbind the service.
-        unbindService(mNetworkQueryServiceConnection);
-
         super.onDestroy();
     }
 
@@ -485,7 +491,17 @@ public class NetworkSetting extends PreferenceActivity
             }
         }
     }
-
+    private boolean  isDataDisableRequired() {
+       boolean isRequired = getApplicationContext().getResources().getBoolean(
+                R.bool.config_disable_data_manual_plmn);
+       if ((TelephonyManager.getDefault()
+           .getMultiSimConfiguration()
+           == TelephonyManager.MultiSimVariants.DSDA) &&
+           (SubscriptionManager.getDefaultDataSubId() != mPhone.getSubId())) {
+           isRequired = false;
+       }
+       return isRequired;
+    }
     /**
      * Returns the title of the network obtained in the manual search.
      *
@@ -507,9 +523,6 @@ public class NetworkSetting extends PreferenceActivity
         }
         if (!ni.getRadioTech().equals(""))
             title += " " + mRatMap.get(ni.getRadioTech());
-
-        if (ni.getState() == OperatorInfo.State.FORBIDDEN)
-            title += " " + getString(R.string.network_forbidden);
 
         return title;
     }
@@ -550,12 +563,6 @@ public class NetworkSetting extends PreferenceActivity
         mRatMap.put(String.valueOf(ServiceState.RIL_RADIO_TECHNOLOGY_HSPAP), "3G");
         mRatMap.put(String.valueOf(ServiceState.RIL_RADIO_TECHNOLOGY_GSM), "2G");
         mRatMap.put(String.valueOf(ServiceState.RIL_RADIO_TECHNOLOGY_TD_SCDMA), "3G");
-    }
-
-    private boolean isMultiSimModeDsda() {
-        return (MSimTelephonyManager.getDefault()
-                .getMultiSimConfiguration()
-                == MSimTelephonyManager.MultiSimVariants.DSDA);
     }
 
     private void log(String msg) {

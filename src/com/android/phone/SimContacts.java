@@ -41,7 +41,10 @@ import android.provider.ContactsContract.CommonDataKinds.Phone;
 import android.provider.ContactsContract.CommonDataKinds.StructuredName;
 import android.provider.ContactsContract.Data;
 import android.provider.ContactsContract.RawContacts;
+import android.telecom.PhoneAccount;
 import android.telephony.PhoneNumberUtils;
+import android.telephony.SubscriptionManager;
+import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.ContextMenu;
@@ -49,11 +52,14 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.Window;
 import android.widget.AdapterView;
 import android.widget.CursorAdapter;
 import android.widget.ListView;
 import android.widget.SimpleCursorAdapter;
 import android.widget.TextView;
+
+import com.android.internal.telephony.PhoneFactory;
 
 import java.util.ArrayList;
 
@@ -62,11 +68,9 @@ import java.util.ArrayList;
  */
 public class SimContacts extends ADNList {
     private static final String LOG_TAG = "SimContacts";
+    private static final String SIM_INDEX = "sim_index";
 
-    private static final String UP_ACTIVITY_PACKAGE = "com.android.contacts";
-    private static final String UP_ACTIVITY_CLASS =
-            "com.android.contacts.activities.PeopleActivity";
-    protected boolean mIsForeground = false;
+    private boolean mIsForeground = false;
     static final ContentValues sEmptyContentValues = new ContentValues();
 
     protected static final int MENU_IMPORT_ONE = 1;
@@ -83,6 +87,11 @@ public class SimContacts extends ADNList {
     private ProgressDialog mProgressDialog;
 
     private Account mAccount;
+    private int mSimIndex = 0;
+    //Import from all SIM's option is having the maximum index
+    //we cannot take the phoneCount as maximum index as it will conflict
+    //in DSDS and TSTS. So assigning to some constant value.
+    private static int IMPORT_FROM_ALL = 8;
 
     private static class NamePhoneTypePair {
         final String name;
@@ -273,20 +282,44 @@ public class SimContacts extends ADNList {
     @Override
     protected Uri resolveIntent() {
         Intent intent = getIntent();
-        intent.setData(Uri.parse("content://icc/adn"));
-        if (Intent.ACTION_PICK.equals(intent.getAction())) {
-            // "index" is 1-based
-            mInitialSelection = intent.getIntExtra("index", 0) - 1;
+
+        Bundle extras = intent.getExtras();
+
+        mSimIndex  = extras.getInt(SIM_INDEX);
+        if (mSimIndex == IMPORT_FROM_ALL) {
+            intent.setData(Uri.parse("content://icc/adn/adn_all"));
+        } else if (mSimIndex < TelephonyManager.getDefault().getPhoneCount() && mSimIndex >= 0) {
+            long[] subId = SubscriptionManager.getSubId(mSimIndex);
+            if (subId != null) {
+                intent.setData(Uri.parse("content://icc/adn/subId/" + subId[0]));
+            } else {
+                Log.e(LOG_TAG, "Error: invalid subId for slot =" + mSimIndex);
+                intent.setData(null);
+            }
+        } else {
+            Log.e(LOG_TAG, "Error: received invalid slot =" + mSimIndex);
         }
-        return intent.getData();
+
+        if (Intent.ACTION_PICK.equals(intent.getAction())) {
+             // "index" is 1-based
+             mInitialSelection = intent.getIntExtra("index", 0) - 1;
+        } else if (Intent.ACTION_VIEW.equals(intent.getAction())) {
+            mInitialSelection = 0;
+         }
+
+         return intent.getData();
     }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         super.onCreateOptionsMenu(menu);
         menu.add(0, MENU_IMPORT_ALL, 0, R.string.importAllSimEntries);
-        menu.add(0, MENU_DELETE_ALL, 0, R.string.deleteAllSimEntries);
-        menu.add(0, MENU_ADD_CONTACT, 0, R.string.addSimEntries);
+        if (!isImportFromAllSelection()) {
+            menu.add(0, MENU_DELETE_ALL, 0, R.string.deleteAllSimEntries);
+            menu.add(0, MENU_ADD_CONTACT, 0, R.string.addSimEntries);
+        } else {
+            Log.i(LOG_TAG, "Only import is supported");
+        }
         return true;
     }
 
@@ -308,11 +341,7 @@ public class SimContacts extends ADNList {
         CharSequence title, message;
         switch (item.getItemId()) {
             case android.R.id.home:
-                Intent intent = new Intent();
-                intent.setClassName(UP_ACTIVITY_PACKAGE, UP_ACTIVITY_CLASS);
-                intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                startActivity(intent);
-                finish();
+                onBackPressed();
                 return true;
             case MENU_DELETE_ALL:
                 title = getString(R.string.deleteAllSimEntries);
@@ -398,7 +427,7 @@ public class SimContacts extends ADNList {
             String phoneNumber = mCursor.getString(NUMBER_COLUMN);
             phoneNumber = PhoneNumberUtils.formatNumber(phoneNumber);
             Intent intent = new Intent(Intent.ACTION_SENDTO,
-                    Uri.fromParts(Constants.SCHEME_SMSTO, phoneNumber, null));
+                    Uri.fromParts(PhoneAccount.SCHEME_SMSTO, phoneNumber, null));
             startActivity(intent);
             finish();
         } else {
@@ -413,7 +442,7 @@ public class SimContacts extends ADNList {
                 Log.e(LOG_TAG, " There is no number in contact ...");
             }
             Intent intent = new Intent(Intent.ACTION_CALL_PRIVILEGED,
-                    Uri.fromParts(Constants.SCHEME_TEL, phoneNumber, null));
+                    Uri.fromParts(PhoneAccount.SCHEME_TEL, phoneNumber, null));
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                     | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
             startActivity(intent);
@@ -555,6 +584,7 @@ public class SimContacts extends ADNList {
     @Override
     public void onCreateContextMenu(ContextMenu menu, View v,
             ContextMenu.ContextMenuInfo menuInfo) {
+
         if (menuInfo instanceof AdapterView.AdapterContextMenuInfo) {
             AdapterView.AdapterContextMenuInfo itemInfo =
                     (AdapterView.AdapterContextMenuInfo) menuInfo;
@@ -563,10 +593,14 @@ public class SimContacts extends ADNList {
                 menu.setHeaderTitle(textView.getText());
             }
             menu.add(0, MENU_IMPORT_ONE, 0, R.string.importSimEntry);
-            menu.add(0, MENU_EDIT_CONTACT, 0, R.string.editContact);
-            menu.add(0, MENU_SMS, 0, R.string.sendSms);
-            menu.add(0, MENU_DIAL, 0, R.string.dial);
-            menu.add(0, MENU_DELETE, 0, R.string.delete);
+            if (!isImportFromAllSelection()) {
+                menu.add(0, MENU_EDIT_CONTACT, 0, R.string.editContact);
+                menu.add(0, MENU_SMS, 0, R.string.sendSms);
+                menu.add(0, MENU_DIAL, 0, R.string.dial);
+                menu.add(0, MENU_DELETE, 0, R.string.delete);
+            } else {
+                Log.i(LOG_TAG, "Only import is supported");
+            }
         }
     }
 
@@ -587,7 +621,7 @@ public class SimContacts extends ADNList {
                         return true;
                     }
                     Intent intent = new Intent(Intent.ACTION_CALL_PRIVILEGED,
-                            Uri.fromParts(Constants.SCHEME_TEL, phoneNumber, null));
+                            Uri.fromParts(PhoneAccount.SCHEME_TEL, phoneNumber, null));
                     intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                                           | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
                     startActivity(intent);
@@ -616,7 +650,50 @@ public class SimContacts extends ADNList {
         }
     };
 
+    @Override
+    protected void displayProgress(boolean loading) {
+        if (DBG) log("displayProgress: " + loading);
+
+        mEmptyText.setText(loading ? R.string.simContacts_emptyLoading:
+            ((isAirplaneModeOn(this) && !isSimPresent())? R.string.simContacts_airplaneMode :
+                R.string.simContacts_empty));
+        getWindow().setFeatureInt(
+                Window.FEATURE_INDETERMINATE_PROGRESS,
+                loading ? Window.PROGRESS_VISIBILITY_ON : Window.PROGRESS_VISIBILITY_OFF);
+    }
+
+    private boolean isSimPresent() {
+        boolean isSimPresent = false;
+        if (mSimIndex == IMPORT_FROM_ALL) {
+            for (int i = 0; i < TelephonyManager.getDefault().getPhoneCount(); i++) {
+                if (PhoneFactory.getPhone(i).getIccCard().hasIccCard()) {
+                    isSimPresent = true;
+                    break;
+                }
+            }
+        } else {
+            isSimPresent = PhoneFactory.getPhone(mSimIndex).getIccCard().hasIccCard();
+        }
+        return isSimPresent;
+    }
+
+
+    private boolean isImportFromAllSelection() {
+        return (mSimIndex == IMPORT_FROM_ALL);
+    }
+
     protected Uri getUri() {
-        return Uri.parse("content://icc/adn");
+        if (mSimIndex < TelephonyManager.getDefault().getPhoneCount() && mSimIndex >= 0) {
+            long[] subId = SubscriptionManager.getSubId(mSimIndex);
+            if (subId != null) {
+                return Uri.parse("content://icc/adn/subId/" + subId[0]);
+            } else {
+                Log.e(TAG, "Invalid subId for slot:" + mSimIndex);
+                return null;
+            }
+        } else {
+            Log.e(TAG, "Invalid subcription:" + mSimIndex);
+            return null;
+        }
     }
 }

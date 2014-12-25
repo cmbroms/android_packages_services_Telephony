@@ -1,7 +1,4 @@
 /*
- * Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
- * Not a Contribution.
- *
  * Copyright (C) 2008 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,10 +23,9 @@ import android.os.AsyncResult;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.util.Log;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceScreen;
-import android.telephony.MSimTelephonyManager;
+import android.telephony.SubscriptionManager;
 import android.util.Log;
 import android.view.MenuItem;
 import android.view.WindowManager;
@@ -37,8 +33,6 @@ import android.widget.Toast;
 
 import com.android.internal.telephony.CommandException;
 import com.android.internal.telephony.Phone;
-
-import static com.android.internal.telephony.MSimConstants.SUBSCRIPTION_KEY;
 
 /**
  * FDN settings UI for the Phone app.
@@ -93,8 +87,6 @@ public class FdnSetting extends PreferenceActivity
     // size limits for the pin.
     private static final int MIN_PIN_LENGTH = 4;
     private static final int MAX_PIN_LENGTH = 8;
-
-    private int mSubscription = 0;
 
     /**
      * Delegate to the respective handlers.
@@ -290,41 +282,37 @@ public class FdnSetting extends PreferenceActivity
                             int attemptsRemaining = msg.arg1;
                             log("Handle EVENT_PIN2_CHANGE_COMPLETE attemptsRemaining="
                                     + attemptsRemaining);
-                            if (ar.exception instanceof RuntimeException) {
-                                displayMessage(R.string.sub_no_sim);
-                            } else {
-                                CommandException ce = (CommandException) ar.exception;
-                                if (ce.getCommandError() == CommandException.Error.SIM_PUK2) {
-                                    // throw an alert dialog on the screen, displaying the
-                                    // request for a PUK2.  set the cancel listener to
-                                    // FdnSetting.onCancel().
-                                    AlertDialog a = new AlertDialog.Builder(FdnSetting.this)
-                                        .setMessage(R.string.puk2_requested)
-                                        .setCancelable(true)
-                                        .setOnCancelListener(FdnSetting.this)
-                                        .setNeutralButton(android.R.string.ok,
-                                                new DialogInterface.OnClickListener() {
+                            CommandException ce = (CommandException) ar.exception;
+                            if (ce.getCommandError() == CommandException.Error.SIM_PUK2) {
+                                // throw an alert dialog on the screen, displaying the
+                                // request for a PUK2.  set the cancel listener to
+                                // FdnSetting.onCancel().
+                                AlertDialog a = new AlertDialog.Builder(FdnSetting.this)
+                                    .setMessage(R.string.puk2_requested)
+                                    .setCancelable(true)
+                                    .setOnCancelListener(FdnSetting.this)
+                                    .setNeutralButton(android.R.string.ok,
+                                            new DialogInterface.OnClickListener() {
                                                 @Override
                                                 public void onClick(DialogInterface dialog,
-                                                    int which) {
-                                                resetPinChangeStateForPUK2();
-                                                displayPinChangeDialog(0,true);
+                                                        int which) {
+                                                    resetPinChangeStateForPUK2();
+                                                    displayPinChangeDialog(0,true);
                                                 }
-                                                })
+                                            })
                                     .create();
-                                    a.getWindow().addFlags(
-                                            WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-                                    a.show();
+                                a.getWindow().addFlags(
+                                        WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+                                a.show();
+                            } else {
+                                // set the correct error message depending upon the state.
+                                // Reset the state depending upon or knowledge of the PUK state.
+                                if (!mIsPuk2Locked) {
+                                    displayMessage(R.string.badPin2, attemptsRemaining);
+                                    resetPinChangeState();
                                 } else {
-                                    // set the correct error message depending upon the state.
-                                    // Reset the state depending upon or knowledge of the PUK state.
-                                    if (!mIsPuk2Locked) {
-                                        displayMessage(R.string.badPin2, attemptsRemaining);
-                                        resetPinChangeState();
-                                    } else {
-                                        displayMessage(R.string.badPuk2, attemptsRemaining);
-                                        resetPinChangeStateForPUK2();
-                                    }
+                                    displayMessage(R.string.badPuk2, attemptsRemaining);
+                                    resetPinChangeStateForPUK2();
                                 }
                             }
                         } else {
@@ -471,24 +459,32 @@ public class FdnSetting extends PreferenceActivity
         }
     }
 
+    /**
+    * Reflect the updated change PIN2 state in the UI.
+    */
+    private void updateChangePIN2() {
+        if (mPhone.getIccCard().getIccPin2Blocked()) {
+            // If the pin2 is blocked, the state of the change pin2 dialog
+            // should be set for puk2 use (that is, the user should be prompted
+            // to enter puk2 code instead of old pin2).
+            resetPinChangeStateForPUK2();
+        } else {
+            resetPinChangeState();
+        }
+    }
+
     @Override
     protected void onCreate(Bundle icicle) {
         super.onCreate(icicle);
 
-        if (MSimTelephonyManager.getDefault().isMultiSimEnabled()) {
-            addPreferencesFromResource(R.xml.msim_fdn_setting);
-        } else {
-            addPreferencesFromResource(R.xml.fdn_setting);
-        }
+        addPreferencesFromResource(R.xml.fdn_setting);
 
-        // getting selected subscription
-        mSubscription = getIntent().getIntExtra(SUBSCRIPTION_KEY,
-                PhoneGlobals.getInstance().getDefaultSubscription());
-        Log.d(LOG_TAG, "Getting FDNSetting subscription =" + mSubscription);
-        mPhone = PhoneGlobals.getInstance().getPhone(mSubscription);
+        mPhone = PhoneUtils.getPhoneFromIntent(getIntent());
+        log("Get FDNSetting phoneId =" + mPhone.getPhoneId());
 
         mSubscriptionPrefFDN  = (PreferenceScreen) findPreference(BUTTON_FDN_KEY);
-        mSubscriptionPrefFDN.getIntent().putExtra(SUBSCRIPTION_KEY, mSubscription);
+        SubscriptionManager.putPhoneIdAndSubIdExtra(mSubscriptionPrefFDN.getIntent(),
+                mPhone.getPhoneId(), mPhone.getSubId());
 
         //get UI object references
         PreferenceScreen prefSet = getPreferenceScreen();
@@ -503,7 +499,14 @@ public class FdnSetting extends PreferenceActivity
 
         // Only reset the pin change dialog if we're not in the middle of changing it.
         if (icicle == null) {
-            resetPinChangeState();
+            if (mPhone.getIccCard().getIccPin2Blocked()) {
+                // If the pin2 is blocked, the state of the change pin2 dialog
+                // should be set for puk2 use (that is, the user should be prompted
+                // to enter puk2 code instead of old pin2).
+                resetPinChangeStateForPUK2();
+            } else {
+                resetPinChangeState();
+            }
         } else {
             mIsPuk2Locked = icicle.getBoolean(SKIP_OLD_PIN_KEY);
             mPinChangeState = icicle.getInt(PIN_CHANGE_STATE_KEY);
@@ -523,8 +526,8 @@ public class FdnSetting extends PreferenceActivity
     @Override
     protected void onResume() {
         super.onResume();
-        mPhone = PhoneGlobals.getInstance().getPhone(mSubscription);
         updateEnableFDN();
+        updateChangePIN2();
     }
 
     /**
@@ -545,11 +548,7 @@ public class FdnSetting extends PreferenceActivity
     public boolean onOptionsItemSelected(MenuItem item) {
         final int itemId = item.getItemId();
         if (itemId == android.R.id.home) {  // See ActionBar#setDisplayHomeAsUpEnabled()
-            if (MSimTelephonyManager.getDefault().isMultiSimEnabled()) {
-                MSimCallFeaturesSubSetting.goUpToTopLevelSetting(this);
-            } else {
-                CallFeaturesSetting.goUpToTopLevelSetting(this);
-            }
+            CallFeaturesSetting.goUpToTopLevelSetting(this);
             return true;
         }
         return super.onOptionsItemSelected(item);

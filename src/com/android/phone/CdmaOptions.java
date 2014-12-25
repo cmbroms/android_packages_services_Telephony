@@ -18,6 +18,7 @@ package com.android.phone;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Resources;
 import android.net.Uri;
 import android.os.SystemProperties;
 import android.preference.Preference;
@@ -27,7 +28,6 @@ import android.provider.Settings;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 
-import com.android.internal.telephony.MSimConstants;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.TelephonyProperties;
@@ -38,34 +38,24 @@ import com.android.internal.telephony.TelephonyProperties;
 public class CdmaOptions {
     private static final String LOG_TAG = "CdmaOptions";
 
-    private PreferenceScreen mButtonAPNExpand;
     private CdmaSystemSelectListPreference mButtonCdmaSystemSelect;
     private CdmaSubscriptionListPreference mButtonCdmaSubscription;
+    private PreferenceScreen mButtonAPNExpand;
 
-    private static final String BUTTON_APN_EXPAND_KEY = "button_apn_key";
     private static final String BUTTON_CDMA_SYSTEM_SELECT_KEY = "cdma_system_select_key";
     private static final String BUTTON_CDMA_SUBSCRIPTION_KEY = "cdma_subscription_key";
     private static final String BUTTON_CDMA_ACTIVATE_DEVICE_KEY = "cdma_activate_device_key";
+    private static final String BUTTON_CARRIER_SETTINGS_KEY = "carrier_settings_key";
+    private static final String BUTTON_APN_EXPAND_KEY = "button_apn_key";
 
     private PreferenceActivity mPrefActivity;
     private PreferenceScreen mPrefScreen;
     private Phone mPhone;
-    private int mSubscription = 0;
 
     public CdmaOptions(PreferenceActivity prefActivity, PreferenceScreen prefScreen, Phone phone) {
         mPrefActivity = prefActivity;
         mPrefScreen = prefScreen;
         mPhone = phone;
-        mSubscription = 0;
-        create();
-    }
-
-    public CdmaOptions(PreferenceActivity prefActivity,
-            PreferenceScreen prefScreen, Phone phone, int subscription) {
-        mPrefActivity = prefActivity;
-        mPrefScreen = prefScreen;
-        mPhone = phone;
-        mSubscription = subscription;
         create();
     }
 
@@ -73,9 +63,29 @@ public class CdmaOptions {
         mPrefActivity.addPreferencesFromResource(R.xml.cdma_options);
 
         mButtonAPNExpand = (PreferenceScreen) mPrefScreen.findPreference(BUTTON_APN_EXPAND_KEY);
-        mButtonAPNExpand.getIntent().putExtra(MSimConstants.SUBSCRIPTION_KEY, mSubscription);
-        if (mPrefActivity.getResources().getBoolean(R.bool.world_phone) == true) {
+        boolean removedAPNExpand = false;
+        Resources res = mPrefActivity.getResources();
+        // Some CDMA carriers want the APN settings
+        if ((!res.getBoolean(R.bool.config_show_apn_setting_cdma) ||
+                res.getBoolean(R.bool.world_phone)) && mButtonAPNExpand != null) {
             mPrefScreen.removePreference(mButtonAPNExpand);
+            removedAPNExpand = true;
+        }
+        if (!removedAPNExpand) {
+            mButtonAPNExpand.setOnPreferenceClickListener(
+                    new Preference.OnPreferenceClickListener() {
+                        @Override
+                        public boolean onPreferenceClick(Preference preference) {
+                            // We need to build the Intent by hand as the Preference Framework
+                            // does not allow to add an Intent with some extras into a Preference
+                            // XML file
+                            final Intent intent = new Intent(Settings.ACTION_APN_SETTINGS);
+                            // This will setup the Home and Search affordance
+                            intent.putExtra(":settings:show_fragment_as_subsetting", true);
+                            mPrefActivity.startActivity(intent);
+                            return true;
+                        }
+            });
         }
 
         mButtonCdmaSystemSelect = (CdmaSystemSelectListPreference)mPrefScreen
@@ -86,13 +96,8 @@ public class CdmaOptions {
 
         mButtonCdmaSystemSelect.setEnabled(true);
         if(deviceSupportsNvAndRuim()) {
-            if (mPrefActivity.getResources().getBoolean(
-                                  R.bool.disable_cdma_subscription)) {
-                mButtonCdmaSubscription.setEnabled(false);
-            } else {
-                log("Both NV and Ruim supported, ENABLE subscription type selection");
-                mButtonCdmaSubscription.setEnabled(true);
-            }
+            log("Both NV and Ruim supported, ENABLE subscription type selection");
+            mButtonCdmaSubscription.setEnabled(true);
         } else {
             log("Both NV and Ruim NOT supported, REMOVE subscription type selection");
             mPrefScreen.removePreference(mPrefScreen
@@ -107,6 +112,16 @@ public class CdmaOptions {
             // and is replaced by the LTE data service item on LTE devices
             mPrefScreen.removePreference(
                     mPrefScreen.findPreference(BUTTON_CDMA_ACTIVATE_DEVICE_KEY));
+        }
+
+        // Read platform settings for carrier settings
+        final boolean isCarrierSettingsEnabled = mPrefActivity.getResources().getBoolean(
+                R.bool.config_carrier_settings_enable);
+        if (!isCarrierSettingsEnabled) {
+            Preference pref = mPrefScreen.findPreference(BUTTON_CARRIER_SETTINGS_KEY);
+            if (pref != null) {
+                mPrefScreen.removePreference(pref);
+            }
         }
     }
 
