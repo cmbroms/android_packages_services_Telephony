@@ -40,6 +40,10 @@
     <protected-broadcast android:name="com.android.internal.telephony.data-restart-trysetup" />
     <protected-broadcast android:name="com.android.internal.telephony.data-stall" />
 
+    <permission
+        android:name="com.qti.permission.SELECT_SUBSCRIPTION"
+        android:protectionLevel="signatureOrSystem" />
+
     <uses-permission android:name="android.permission.BROADCAST_STICKY" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.CALL_PRIVILEGED" />
@@ -135,7 +139,7 @@
         <activity android:name="ADNList" />
 
         <activity android:name="SimContacts"
-            android:label="@string/simContacts_title"
+            android:label="@string/simContacts_title_cm"
             android:theme="@style/SimImportTheme"
             android:screenOrientation="portrait"
             android:icon="@mipmap/ic_launcher_contacts">
@@ -467,6 +471,7 @@
         <activity android:name=".msim.SelectSubscription"
             android:label="@string/callind_multi_sim"
             android:configChanges="orientation|keyboardHidden"
+            android:permission="com.qti.permission.SELECT_SUBSCRIPTION"
             android:theme="@style/SettingsLight">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -619,6 +624,13 @@
             </intent-filter>
         </receiver>
 
+        <receiver android:name=".PhoneToggler" android:permission="com.android.phone.CHANGE_NETWORK_MODE">
+            <intent-filter>
+                <action android:name="com.android.internal.telephony.REQUEST_NETWORK_MODE" />
+                <action android:name="com.android.internal.telephony.MODIFY_NETWORK_MODE" />
+            </intent-filter>
+        </receiver>
+
         <!-- service to dump telephony information -->
         <service android:name="HfaService" android:exported="false"/>
 
@@ -665,4 +677,10 @@
         </activity>
 
     </application>
+
+    <permission android:name="com.android.phone.CHANGE_NETWORK_MODE"
+        android:label="@string/perm_change_mobile_network"
+        android:description="@string/perm_change_mobile_network_desc"
+        android:permissionGroup="android.permission-group.COST_MONEY"
+        android:protectionLevel="dangerous" />
 </manifest>

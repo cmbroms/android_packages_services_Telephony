@@ -44,6 +44,7 @@ import android.preference.Preference;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceManager;
 import android.preference.PreferenceScreen;
+import android.preference.SwitchPreference;
 import android.provider.ContactsContract.CommonDataKinds;
 import android.provider.Settings;
 import android.telecom.TelecomManager;
@@ -161,6 +162,8 @@ public class CallFeaturesSetting extends PreferenceActivity
     private static final String BUTTON_VOICEMAIL_KEY = "button_voicemail_key";
     private static final String BUTTON_VOICEMAIL_PROVIDER_KEY = "button_voicemail_provider_key";
     private static final String BUTTON_VOICEMAIL_SETTING_KEY = "button_voicemail_setting_key";
+    private static final String BUTTON_VOICEMAIL_CATEGORY_KEY = "button_voicemail_category_key";
+    private static final String BUTTON_MWI_NOTIFICATION_KEY = "button_mwi_notification_key";
     // New preference key for voicemail notification vibration
     /* package */ static final String BUTTON_VOICEMAIL_NOTIFICATION_VIBRATE_KEY =
             "button_voicemail_notification_vibrate_key";
@@ -191,7 +194,6 @@ public class CallFeaturesSetting extends PreferenceActivity
             "phone_account_settings_preference_screen";
 
     private static final String BUTTON_SELECT_SUB_KEY  = "button_call_independent_serv";
-    private static final String BUTTON_XDIVERT_KEY = "button_xdivert";
 
     private Intent mContactListIntent;
 
@@ -201,6 +203,7 @@ public class CallFeaturesSetting extends PreferenceActivity
     private static final int EVENT_FORWARDING_GET_COMPLETED = 502;
 
     private static final int MSG_UPDATE_VOICEMAIL_RINGTONE_SUMMARY = 1;
+
 
     public static final String HAC_KEY = "HACSetting";
     public static final String HAC_VAL_ON = "ON";
@@ -219,7 +222,6 @@ public class CallFeaturesSetting extends PreferenceActivity
     private static final int FW_SET_RESPONSE_ERROR = 501;
     private static final int FW_GET_RESPONSE_ERROR = 502;
 
-
     // dialog identifiers for voicemail
     private static final int VOICEMAIL_DIALOG_CONFIRM = 600;
     private static final int VOICEMAIL_FWD_SAVING_DIALOG = 601;
@@ -235,6 +237,9 @@ public class CallFeaturesSetting extends PreferenceActivity
     private static final int MSG_FW_GET_EXCEPTION = 402;
     private static final int MSG_VM_OK = 600;
     private static final int MSG_VM_NOCHANGE = 700;
+
+    // dialog identifiers for TTY
+    private static final int TTY_SET_RESPONSE_ERROR = 800;
 
     // voicemail notification vibration string constants
     private static final String VOICEMAIL_VIBRATION_ALWAYS = "always";
@@ -262,16 +267,17 @@ public class CallFeaturesSetting extends PreferenceActivity
     };
 
     /** Whether dialpad plays DTMF tone or not. */
-    private CheckBoxPreference mButtonAutoRetry;
-    private CheckBoxPreference mButtonHAC;
+    private SwitchPreference mButtonAutoRetry;
+    private SwitchPreference mButtonHAC;
     private ListPreference mButtonDTMF;
     private ListPreference mButtonTTY;
     private Preference mPhoneAccountSettingsPreference;
+    private SwitchPreference mMwiNotification;
     private ListPreference mVoicemailProviders;
     private PreferenceScreen mVoicemailSettingsScreen;
     private PreferenceScreen mVoicemailSettings;
     private Preference mVoicemailNotificationRingtone;
-    private CheckBoxPreference mVoicemailNotificationVibrate;
+    private SwitchPreference mVoicemailNotificationVibrate;
     private AccountSelectionPreference mDefaultOutgoingAccount;
     private boolean isSpeedDialListStarted = false;
     private PreferenceScreen mButtonBlacklist;
@@ -484,9 +490,17 @@ public class CallFeaturesSetting extends PreferenceActivity
     public boolean onPreferenceTreeClick(PreferenceScreen preferenceScreen, Preference preference) {
         if (preference == mSubMenuVoicemailSettings) {
             return true;
+        } else if (preference == mMwiNotification) {
+            Settings.System.putInt(getContentResolver(), Settings.System.ENABLE_MWI_NOTIFICATION,
+                    mMwiNotification.isChecked() ? 1 : 0);
+            return true;
         } else if (preference == mButtonDTMF) {
             return true;
         } else if (preference == mButtonTTY) {
+            if(mPhone.isImsVtCallPresent()) {
+                // TTY Mode change is not allowed during a VT call
+                showDialogIfForeground(TTY_SET_RESPONSE_ERROR);
+            }
             return true;
         } else if (preference == mButtonAutoRetry) {
             android.provider.Settings.Global.putInt(mPhone.getContext().getContentResolver(),
@@ -1400,7 +1414,7 @@ public class CallFeaturesSetting extends PreferenceActivity
     protected Dialog onCreateDialog(int id) {
         if ((id == VM_RESPONSE_ERROR) || (id == VM_NOCHANGE_ERROR) ||
             (id == FW_SET_RESPONSE_ERROR) || (id == FW_GET_RESPONSE_ERROR) ||
-                (id == VOICEMAIL_DIALOG_CONFIRM)) {
+                (id == VOICEMAIL_DIALOG_CONFIRM) || (id == TTY_SET_RESPONSE_ERROR)) {
 
             AlertDialog.Builder b = new AlertDialog.Builder(this);
 
@@ -1436,6 +1450,12 @@ public class CallFeaturesSetting extends PreferenceActivity
                     b.setPositiveButton(R.string.alert_dialog_yes, this);
                     b.setNegativeButton(R.string.alert_dialog_no, this);
                     break;
+                case TTY_SET_RESPONSE_ERROR:
+                    titleId = R.string.tty_mode_option_title;
+                    msgId = R.string.tty_mode_not_allowed_vt_call;
+                    b.setIconAttribute(android.R.attr.alertDialogIcon);
+                    b.setPositiveButton(R.string.ok, this);
+                    break;
                 default:
                     msgId = R.string.exception_error;
                     // Set Button 3, tells the activity that the error is
@@ -1466,7 +1486,6 @@ public class CallFeaturesSetting extends PreferenceActivity
                     R.string.reading_settings)));
             return dialog;
         }
-
 
         return null;
     }
@@ -1623,9 +1642,21 @@ public class CallFeaturesSetting extends PreferenceActivity
                     findPreference(BUTTON_VIDEO_CALL_SP_KEY);
         }
 
+        mMwiNotification = (SwitchPreference) findPreference(BUTTON_MWI_NOTIFICATION_KEY);
+        if (mMwiNotification != null) {
+            if (getResources().getBoolean(R.bool.sprint_mwi_quirk)) {
+                mMwiNotification.setOnPreferenceChangeListener(this);
+            } else {
+                PreferenceScreen voicemailCategory =
+                        (PreferenceScreen) findPreference(BUTTON_VOICEMAIL_CATEGORY_KEY);
+                voicemailCategory.removePreference(mMwiNotification);
+                mMwiNotification = null;
+            }
+        }
+
         mButtonDTMF = (ListPreference) findPreference(BUTTON_DTMF_KEY);
-        mButtonAutoRetry = (CheckBoxPreference) findPreference(BUTTON_RETRY_KEY);
-        mButtonHAC = (CheckBoxPreference) findPreference(BUTTON_HAC_KEY);
+        mButtonAutoRetry = (SwitchPreference) findPreference(BUTTON_RETRY_KEY);
+        mButtonHAC = (SwitchPreference) findPreference(BUTTON_HAC_KEY);
         mButtonTTY = (ListPreference) findPreference(BUTTON_TTY_KEY);
         mVoicemailProviders = (ListPreference) findPreference(BUTTON_VOICEMAIL_PROVIDER_KEY);
         mIPPrefixPreference = (PreferenceScreen) findPreference(BUTTON_IPPREFIX_KEY);
@@ -1638,7 +1669,7 @@ public class CallFeaturesSetting extends PreferenceActivity
             mVoicemailNotificationRingtone =
                     findPreference(BUTTON_VOICEMAIL_NOTIFICATION_RINGTONE_KEY);
             mVoicemailNotificationVibrate =
-                    (CheckBoxPreference) findPreference(BUTTON_VOICEMAIL_NOTIFICATION_VIBRATE_KEY);
+                    (SwitchPreference) findPreference(BUTTON_VOICEMAIL_NOTIFICATION_VIBRATE_KEY);
             initVoiceMailProviders();
         }
 
@@ -1754,13 +1785,10 @@ public class CallFeaturesSetting extends PreferenceActivity
                     "com.android.phone.msim.MSimCallFeaturesSubSetting");
         }
 
-        if (isMsim && TelephonyManager.getDefault().getMultiSimConfiguration() !=
-                TelephonyManager.MultiSimVariants.DSDS) {
-            PreferenceScreen mXDivertPref = (PreferenceScreen) findPreference(BUTTON_XDIVERT_KEY);
-            if (mXDivertPref != null) {
-                log("Remove xdivert preference");
-                prefSet.removePreference(mXDivertPref);
-            }
+        if (mMwiNotification != null) {
+            int mwiNotification = Settings.System.getInt(getContentResolver(),
+                    Settings.System.ENABLE_MWI_NOTIFICATION, 0);
+            mMwiNotification.setChecked(mwiNotification != 0);
         }
 
         if (mButtonDTMF != null) {

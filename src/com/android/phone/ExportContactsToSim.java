@@ -30,7 +30,6 @@
 package com.android.phone;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.database.Cursor;
@@ -41,14 +40,12 @@ import android.os.Message;
 import android.provider.ContactsContract;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
+import android.provider.ContactsContract.CommonDataKinds.Phone;
 import android.telephony.PhoneNumberUtils;
 import android.util.Log;
 import android.view.Window;
 import android.widget.TextView;
-
-import android.content.DialogInterface;
-import android.content.DialogInterface.OnClickListener;
-import android.provider.ContactsContract.CommonDataKinds.Phone;
+import android.widget.Toast;
 
 import static android.view.Window.PROGRESS_VISIBILITY_OFF;
 import static android.view.Window.PROGRESS_VISIBILITY_ON;
@@ -102,6 +99,8 @@ public class ExportContactsToSim extends Activity {
                 if ((contactsCursor.getCount()) < 1) {
                     // If there are no contacts in Phone book display it to user.
                     mResult = NO_CONTACTS;
+                } else if (getUri() == null){
+                    mResult = FAILURE;
                 } else {
                     //We need to load SIM Records atleast once before exporting to SIM.
                     if (!mSimContactsLoaded) {
@@ -161,22 +160,8 @@ public class ExportContactsToSim extends Activity {
         }
     }
 
-    private void showAlertDialog(String value) {
-        if (!mIsForeground) {
-            Log.d(TAG, "The activitiy is not in foreground. Do not display dialog!!!");
-            return;
-        }
-        AlertDialog alertDialog = new AlertDialog.Builder(this).create();
-        alertDialog.setTitle("Result...");
-        alertDialog.setMessage(value);
-        alertDialog.setCanceledOnTouchOutside(false);
-        alertDialog.setButton("OK", new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int which) {
-                // finish ExportContacts activity
-                finish();
-            }
-        });
-        alertDialog.show();
+    private void showToast(String value) {
+        Toast.makeText(this, value, Toast.LENGTH_SHORT).show();
     }
 
     private void displayProgress(boolean loading) {
@@ -193,11 +178,14 @@ public class ExportContactsToSim extends Activity {
                 case CONTACTS_EXPORTED:
                     int result = (Integer)msg.obj;
                     if (result == SUCCESS) {
-                        showAlertDialog(getString(R.string.exportAllcontatsSuccess));
+                        showToast(getString(R.string.exportAllcontatsSuccess));
                     } else if (result == NO_CONTACTS) {
-                        showAlertDialog(getString(R.string.exportAllcontatsNoContacts));
+                        showToast(getString(R.string.exportAllcontatsNoContacts));
                     } else {
-                        showAlertDialog(getString(R.string.exportAllcontatsFailed));
+                        showToast(getString(R.string.exportAllcontatsFailed));
+                    }
+                    if (mIsForeground) {
+                       finish();
                     }
                     break;
             }
@@ -207,12 +195,12 @@ public class ExportContactsToSim extends Activity {
     private Uri getUri() {
         Intent intent = getIntent();
         Bundle extras = intent.getExtras();
-        int slotId  = extras.getInt(SIM_INDEX);
+        int slotId  = (extras != null) ? extras.getInt(SIM_INDEX) : -1;
         Log.d("ExportContactsToSim"," on slot: " + slotId);
 
         if (slotId < TelephonyManager.getDefault().getPhoneCount() && slotId >= 0) {
             long[] subId = SubscriptionManager.getSubId(slotId);
-            if (subId != null) {
+            if (subId != null && subId[0] > 0) {
                 return Uri.parse("content://icc/adn/subId/" + subId[0]);
             } else {
                 Log.e(TAG, "Invalid subId for slot:" + slotId);

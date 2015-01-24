@@ -22,6 +22,9 @@
          prevent the IccDepersonalizationPanel from being shown,
          and effectively disable the "Sim perso unlock" feature. -->
     <bool name="ignore_perso_locked_events">false</bool>
+    <!-- For compatibility with Google's configuration files, it
+         is used in exactly the same way as the above -->
+    <bool name="ignore_sim_network_locked_events">false</bool>
 
     <!-- Flag indicating whether the Phone app should provide
          a "Dismiss" button on the SIM network unlock screen.
@@ -140,6 +143,13 @@
     <!-- carrier settings menu -->
     <string name="carrier_settings" translatable="false"></string>
     <string name="carrier_settings_menu" translatable="false"></string>
+
+    <!-- Sprint Message Wait Indicator Quirk
+         If true, message wait indicators are hidden by default on this device
+         unless the user enables it in Call Settings.  This quirk is necessary
+         for the "Phantom Voicemail" issue where notifications are impossible
+         to dismiss on the Sprint network. -->
+    <bool name="sprint_mwi_quirk">false</bool>
 
     <!-- Does not display additional call seting for IMS phone based on GSM Phone -->
     <bool name="config_additional_call_setting">true</bool>

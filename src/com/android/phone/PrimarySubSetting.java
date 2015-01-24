@@ -55,6 +55,7 @@ import com.android.internal.telephony.Phone;
 
 public class PrimarySubSetting extends Activity implements View.OnClickListener {
 
+    private static final String TAG = "PrimarySubSetting";
     private TextView mRecognizeText;
     private RadioGroup mRadioGroup;
     private Button mOKbutton;
@@ -165,11 +166,15 @@ public class PrimarySubSetting extends Activity implements View.OnClickListener 
                             // primary sub,
                             // if failed, then restore dds to primary sub once
                             // icc loaded done.
-                            android.util.Log.d("PrimarySubSetting",
+                            android.util.Log.d(TAG,
                                   " Set dds to primary sub, if failed, restore dds once icc loaded");
                             SubscriptionManager.setDefaultDataSubId(SubscriptionManager
                                     .getSubId(targetSub)[0]);
                             mPrimarySubSelectionController.setRestoreDdsToPrimarySub(true);
+                        } else {
+                            long ddsSub = SubscriptionManager.getDefaultDataSubId();
+                            android.util.Log.d(TAG, " Set DDS back to previous sub :" + ddsSub);
+                            SubscriptionManager.setDefaultDataSubId(ddsSub);
                         }
                         Toast.makeText(PrimarySubSetting.this, getString(R.string.reg_suc),
                                 Toast.LENGTH_LONG).show();
@@ -191,7 +196,7 @@ public class PrimarySubSetting extends Activity implements View.OnClickListener 
                     .setMessage(
                             getString(R.string.reg_failed_msg,
                                     mPrimarySubSelectionController.getSimName(sub)))
-                    .setNeutralButton(R.string.select_ok, null)
+                    .setNeutralButton(android.R.string.ok, null)
                     .create();
             alertDialog.show();
         } else {
@@ -208,7 +213,7 @@ public class PrimarySubSetting extends Activity implements View.OnClickListener 
                             finish();
                         }
                     })
-                    .setNegativeButton(R.string.select_cancel,
+                    .setNegativeButton(android.R.string.cancel,
                             new DialogInterface.OnClickListener() {
                                 public void onClick(DialogInterface dialog, int which) {
                                     finish();
